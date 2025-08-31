@@ -1,0 +1,114 @@
+* {
+  margin: 0;
+  /* padding: 0; */
+  box-sizing: border-box;
+}
+
+:root {
+  --text: black;
+}
+
+body {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    'Apple Color Emoji',
+    'Segoe UI Emoji';
+  color: var(--text);
+  line-height: 1.5;
+}
+
+#results-table td {
+  vertical-align: top;
+}
+
+/* Monospaced elements */
+#results-table td.rgb-values,
+#results-table td.hex-values,
+.config-text {
+  font-family:
+    'SF Mono', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+}
+
+/* Responsive canvas layout & interaction essentials */
+.canvas-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 1; /* matches logical 800x400 */
+  margin: 1rem 0;
+}
+
+/* Ensure Fabric's internal wrapper fills the stage */
+.canvas-stage > .canvas-container {
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+#background-canvas,
+#webgl-canvas,
+#fabric-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#webgl-canvas {
+  z-index: 2;
+}
+#fabric-canvas {
+  z-index: 3;
+  pointer-events: all;
+  cursor: default;
+}
+#background-canvas {
+  z-index: 1;
+}
+
+/* Ensure Fabric.js upper canvas is interactive */
+.canvas-stage .upper-canvas {
+  pointer-events: all !important;
+  cursor: default !important;
+  z-index: 3 !important;
+}
+.canvas-stage .lower-canvas {
+  z-index: 2 !important;
+}
+
+/* Simple dialog essentials */
+#edit-modal {
+  border: none;
+  padding: 0;
+  margin: auto;
+  padding: 1rem;
+}
+#edit-modal::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* Results table minimal structure */
+#results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+#results-table th,
+#results-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Color swatch */
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  display: inline-block;
+  margin-right: 4px;
+  border-radius: 2px;
+}

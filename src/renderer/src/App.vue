@@ -1,0 +1,75 @@
+<script setup lang="ts">
+import { onMounted, onBeforeUnmount, ref, watch } from "vue";
+import ColorAverage from "./components/ColorAverage.vue";
+import SyphonClientCanvas from "./components/syphon/SyphonClientCanvas.vue";
+
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+// let removeFrameListener: (() => void) | null = null
+let removeServersListener: (() => void) | null = null;
+
+const servers = ref<Array<{ index: number; name: string }>>([]);
+const selectedIndex = ref<number | null>(null);
+
+onMounted(() => {
+  // Start Syphon discovery
+  window.syphon.start();
+
+  // Subscribe, then read current list
+  removeServersListener = window.syphon.onServersChanged((list) => {
+    servers.value = list;
+    if (selectedIndex.value == null && list.length > 0) {
+      selectedIndex.value = list[list.length - 1].index;
+    }
+  });
+  servers.value = window.syphon.getServers();
+  if (selectedIndex.value == null && servers.value.length > 0) {
+    selectedIndex.value = servers.value[servers.value.length - 1].index;
+  }
+
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // removeFrameListener = window.syphon.onFrame(({ buffer, width, height }) => {
+  //   if (canvas.width !== width) canvas.width = width
+  //   if (canvas.height !== height) canvas.height = height
+
+  //   // Create a fresh Uint8ClampedArray to satisfy DOM types
+  //   const clamped = new Uint8ClampedArray(buffer.length)
+  //   clamped.set(buffer)
+  //   const imageData = new ImageData(clamped, width, height)
+  //   ctx.putImageData(imageData, 0, 0)
+  // })
+});
+
+watch(selectedIndex, (idx) => {
+  if (typeof idx === "number") {
+    window.syphon.selectServer(idx);
+  }
+});
+
+onBeforeUnmount(() => {
+  // if (removeFrameListener) removeFrameListener()
+  if (removeServersListener) removeServersListener();
+  window.syphon.stop();
+});
+</script>
+
+<template>
+  <div style="padding: 12px; display: flex; gap: 16px; align-items: center">
+    <label>
+      Syphon server:
+      <select v-model.number="selectedIndex">
+        <option v-for="s in servers" :key="s.index" :value="s.index">
+          {{ s.name }}
+        </option>
+      </select>
+    </label>
+    <!-- <canvas ref="canvasRef" style="border: 1px solid #333; max-width: 100%"></canvas> -->
+  </div>
+
+  <!-- <SyphonClientCanvas @fps="(v) => void v" /> -->
+
+  <ColorAverage />
+</template>
