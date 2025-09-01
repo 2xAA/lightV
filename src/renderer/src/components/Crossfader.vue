@@ -12,6 +12,6 @@ const value = computed({
 <template>
   <div style="display: grid; gap: 6px; align-items: center">
     <label style="font-size: 12px">Crossfader</label>
-    <input type="range" min="0" max="1" step="0.001" v-model.number="value" />
+    <input v-model.number="value" type="range" min="0" max="1" step="0.001" />
   </div>
 </template>
