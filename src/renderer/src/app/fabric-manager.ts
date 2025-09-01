@@ -131,6 +131,9 @@ export class FabricManager {
     // Enable object controls
     this.fabric.selection = true;
     this.fabric.skipTargetFind = false;
+    // Ensure canvas remains interactive for transformations
+    // @ts-ignore interactive is not typed on fabric.Canvas options
+    this.fabric.interactive = true;
     // this.fabric.interactive = true;
   }
 
@@ -262,10 +265,15 @@ export class FabricManager {
         stroke: "#14B8A6",
         strokeWidth: 2,
         strokeDashArray: [3, 3],
+        // Match original behaviour so group transforms work correctly
+        // Child cells remain non-selectable but still need controls metadata
         selectable: false,
         evented: false,
+        // @ts-ignore missing typings for these props on fabric.Rect
         hasControls: true,
+        // @ts-ignore
         hasBorders: true,
+        // @ts-ignore
         hasRotatingPoint: true,
         transparentCorners: false,
         cornerColor: "#14B8A6",
@@ -289,6 +297,12 @@ export class FabricManager {
       evented: true,
       hasControls: true,
       hasBorders: true,
+      // @ts-ignore hasRotatingPoint is not typed
+      hasRotatingPoint: true,
+      transparentCorners: false,
+      cornerColor: "#14B8A6",
+      cornerStyle: "circle",
+      cornerSize: 8,
       // hasRotatingPoint: true,
       // @ts-ignore regionId is not typed
       regionId: regionId,
@@ -347,9 +361,16 @@ export class FabricManager {
       evented: true,
       hasControls: true,
       hasBorders: true,
+      // @ts-ignore hasRotatingPoint is not typed
+      hasRotatingPoint: true,
+      transparentCorners: false,
+      cornerColor: "#8B5CF6",
+      cornerStyle: "circle",
+      cornerSize: 8,
       // hasRotatingPoint: true,
-      // regionId: regionId,
-      // regionType: "grid",
+      // @ts-ignore regionId is not typed
+      regionId: regionId,
+      regionType: "grid",
     });
 
     return [group];

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import ColorAverage from "./components/ColorAverage.vue";
-import SyphonClientCanvas from "./components/syphon/SyphonClientCanvas.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { Quad } from "./fabric-manager";
 
 export class WebGLRenderer {
