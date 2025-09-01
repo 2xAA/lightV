@@ -16,6 +16,8 @@ export class Compositor {
   uUvRectALoc: WebGLUniformLocation | null;
   uUvRectBLoc: WebGLUniformLocation | null;
   _mix: number;
+  uModeLoc: WebGLUniformLocation | null;
+  _mode: number;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -35,6 +37,8 @@ export class Compositor {
     this.uUvRectALoc = null;
     this.uUvRectBLoc = null;
     this._mix = 0;
+    this.uModeLoc = null;
+    this._mode = 0;
   }
 
   init(): void {
@@ -63,6 +67,7 @@ export class Compositor {
       uniform int u_flipYB; // 0 or 1
       uniform vec4 u_uvRectA; // offset.xy, scale.xy
       uniform vec4 u_uvRectB; // offset.xy, scale.xy
+      uniform int u_mode; // 0=normal,1=add,2=multiply,3=screen
       vec2 uvFlip(vec2 uv, int flipY) { return flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
       vec2 applyRect(vec2 uv, vec4 rect) { return rect.xy + uv * rect.zw; }
       void main() {
@@ -72,7 +77,18 @@ export class Compositor {
         uvB = applyRect(uvB, u_uvRectB);
         vec4 a = texture(u_texA, uvA);
         vec4 b = texture(u_texB, uvB);
-        fragColor = mix(a, b, clamp(u_mix, 0.0, 1.0));
+        float t = clamp(u_mix, 0.0, 1.0);
+        vec4 base = mix(a, b, t);
+        if (u_mode == 0) {
+          fragColor = base;
+        } else {
+          vec4 addC = clamp(a + b, 0.0, 1.0);
+          vec4 mulC = a * b;
+          vec4 scrC = 1.0 - (1.0 - a) * (1.0 - b);
+          vec4 modeC = (u_mode == 1) ? addC : (u_mode == 2) ? mulC : scrC;
+          float overlap = 1.0 - abs(2.0 * t - 1.0);
+          fragColor = mix(base, modeC, overlap);
+        }
       }
     `;
 
@@ -97,6 +113,7 @@ export class Compositor {
     this.uFlipYBLoc = gl.getUniformLocation(program, "u_flipYB");
     this.uUvRectALoc = gl.getUniformLocation(program, "u_uvRectA");
     this.uUvRectBLoc = gl.getUniformLocation(program, "u_uvRectB");
+    this.uModeLoc = gl.getUniformLocation(program, "u_mode");
 
     // quad
     this.positionBuffer = gl.createBuffer();
@@ -210,6 +227,10 @@ export class Compositor {
     this._mix = Math.max(0, Math.min(1, Number(v) || 0));
   }
 
+  setBlendMode(mode: number): void {
+    this._mode = mode | 0;
+  }
+
   setTextures(texA: WebGLTexture | null, texB: WebGLTexture | null): void {
     if (!this.gl) return;
     if (texA) this.texA = texA;
@@ -285,6 +306,7 @@ export class Compositor {
     gl.uniform1i(this.uTexBLoc, 1);
 
     gl.uniform1f(this.mixLocation, this._mix);
+    gl.uniform1i(this.uModeLoc, this._mode);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }

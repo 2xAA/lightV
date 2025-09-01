@@ -55,6 +55,8 @@ export type SlotModel = {
 
 export const useVjStore = defineStore("vj", () => {
   const crossfade = ref(0); // 0 -> A, 1 -> B
+  const crossfadeCurve = ref<"linear" | "equalPower">("linear");
+  const blendMode = ref<"normal" | "add" | "multiply" | "screen">("normal");
   const compositor = shallowRef<Compositor | null>(null);
   const canvasEl = ref<HTMLCanvasElement | null>(null);
   let rafId: number | null = null;
@@ -634,7 +636,21 @@ export const useVjStore = defineStore("vj", () => {
         const rectA = computeUvRect(sourceA.value);
         const rectB = computeUvRect(sourceB.value);
         compositor.value.setUvRects(rectA, rectB);
-        compositor.value.setMix(crossfade.value);
+        const v = Math.max(0, Math.min(1, crossfade.value));
+        const t =
+          crossfadeCurve.value === "equalPower"
+            ? Math.sin((v * Math.PI) / 2)
+            : v;
+        compositor.value.setMix(t);
+        const modeIndex =
+          blendMode.value === "normal"
+            ? 0
+            : blendMode.value === "add"
+              ? 1
+              : blendMode.value === "multiply"
+                ? 2
+                : 3;
+        (compositor.value as any).setBlendMode?.(modeIndex);
         compositor.value.render();
       }
       rafId = requestAnimationFrame(loop);
@@ -653,13 +669,25 @@ export const useVjStore = defineStore("vj", () => {
     crossfade.value = Math.max(0, Math.min(1, v));
   }
 
+  function setCrossfadeCurve(curve: "linear" | "equalPower"): void {
+    crossfadeCurve.value = curve;
+  }
+
+  function setBlendMode(mode: "normal" | "add" | "multiply" | "screen"): void {
+    blendMode.value = mode;
+  }
+
   return {
     crossfade,
+    crossfadeCurve,
+    blendMode,
     compositor,
     init,
     start,
     stop,
     setCrossfade,
+    setCrossfadeCurve,
+    setBlendMode,
     pauseInactiveWebcams,
     loadImageIntoDeck,
     loadSyphonIntoDeck,

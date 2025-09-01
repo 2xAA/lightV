@@ -93,9 +93,16 @@ Acceptance
 
 ---
 
-## Slice 10 -- Crossfader Modes
-- [ ] Implement different crossfader curves like a dj mixer
-- [ ] Implement different colour mix modes
+## Slice 10 — Crossfader modes and curves
+- [X] Crossfader curves: implement Linear and Equal‑Power curves; expose as store state and UI select.
+- [X] Blend modes: implement Normal (crossfade), Add, Multiply, Screen as selectable modes for the crossfader.
+- [X] UI: add a compact control near the crossfader to pick Curve and Blend Mode.
+- [X] Persistence: store the selected curve and blend mode in the central store for future persistence slice.
+
+Acceptance
+- [X] With Curve=Linear, mid‑point (50%) looks like a straight average; with Equal‑Power, mid‑point preserves perceived brightness.
+- [X] Blend modes behave as expected on test pairs (white/black, primary colors) with no artifacts.
+- [X] Switching curve or mode updates output immediately without frame drops.
 
 ---
 
