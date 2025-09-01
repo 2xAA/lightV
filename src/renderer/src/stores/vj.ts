@@ -6,6 +6,7 @@ import { registerSource, createSource } from "../app/sources/sourceRegistry";
 import { MockSource } from "../app/sources/MockSource";
 import { ImageSource } from "../app/sources/ImageSource";
 import { SyphonSource } from "../app/sources/SyphonSource";
+import { VideoSource } from "../app/sources/VideoSource";
 import type { SourceDescriptor } from "../app/sources/types";
 
 // register built-ins for now
@@ -25,6 +26,10 @@ registerSource(
       label,
       serverIndex: (options?.serverIndex as number) ?? undefined,
     }),
+);
+registerSource(
+  "video",
+  ({ id, label, options }) => new VideoSource({ id, label, options }),
 );
 
 export type DeckId = "A" | "B";
@@ -164,6 +169,23 @@ export const useVjStore = defineStore("vj", () => {
       });
       await s.load(gl);
       return s;
+    } else if (desc.type === "video") {
+      const id = `vid-${Date.now()}`;
+      const v = new VideoSource({
+        id,
+        label: desc.label,
+        options: {
+          fillMode: desc.options?.fillMode,
+          loop: desc.options?.loop,
+          muted: desc.options?.muted,
+          playbackRate: desc.options?.playbackRate,
+        },
+      });
+      v.load(gl);
+      const file = await dataUrlToFile(desc.dataUrl, desc.label || "video.mp4");
+      await v.setFile(file);
+      v.start();
+      return v;
     }
     return null;
   }
@@ -173,6 +195,8 @@ export const useVjStore = defineStore("vj", () => {
     if (slot.type === "syphon" && slot.saved && slot.saved.type === "syphon")
       return slot.saved;
     if (slot.type === "image" && slot.saved && slot.saved.type === "image")
+      return slot.saved;
+    if (slot.type === "video" && slot.saved && slot.saved.type === "video")
       return slot.saved;
     return null;
   }
@@ -184,7 +208,9 @@ export const useVjStore = defineStore("vj", () => {
   ): Promise<File> {
     const res = await fetch(dataUrl);
     const blob = await res.blob();
-    return new File([blob], filename, { type: blob.type || "image/png" });
+    return new File([blob], filename, {
+      type: blob.type || "application/octet-stream",
+    });
   }
 
   async function loadImageIntoDeck(deck: DeckId, file: File): Promise<void> {
@@ -248,7 +274,6 @@ export const useVjStore = defineStore("vj", () => {
     img.load(gl);
     img.setOutputSize(canvas.width, canvas.height);
     await img.setFile(file);
-    // persist as data URL for now
     const dataUrl = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
@@ -260,6 +285,35 @@ export const useVjStore = defineStore("vj", () => {
       dataUrl,
     };
     setSlotSource(side, index, img, saved.label, "image", saved);
+  }
+
+  async function loadVideoIntoSlot(
+    side: BankSide,
+    index: number,
+    file: File,
+  ): Promise<void> {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    if (!comp || !gl) return;
+    const id = `${side}-slot${index}-vid-${Date.now()}`;
+    const v = new VideoSource({ id, label: file.name || "Video" });
+    v.load(gl);
+    if (canvasEl.value)
+      v.setOutputSize(canvasEl.value.width, canvasEl.value.height);
+    await v.setFile(file);
+    v.start();
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(file);
+    });
+    const saved: SourceDescriptor = {
+      type: "video",
+      label: file.name || "Video",
+      dataUrl,
+      options: { loop: true, muted: true, playbackRate: 1 },
+    };
+    setSlotSource(side, index, v, saved.label, "video", saved);
   }
 
   async function loadSyphonIntoSlot(
@@ -295,6 +349,12 @@ export const useVjStore = defineStore("vj", () => {
     await loadSyphonIntoSlot(side, index, serverIndex, label);
   }
 
+  async function addVideoToBank(side: BankSide, file: File): Promise<void> {
+    const slots = getSlots(side);
+    const index = slots.length;
+    await loadVideoIntoSlot(side, index, file);
+  }
+
   async function restoreSlotFromSaved(
     side: BankSide,
     index: number,
@@ -316,9 +376,7 @@ export const useVjStore = defineStore("vj", () => {
     const fromSlots = getSlots(fromSide).slice();
     const toSlots = getSlots(toSide).slice();
     const from = fromSlots[fromIndex];
-    // remove from source bank
     fromSlots.splice(fromIndex, 1);
-    // insert into destination
     toSlots.splice(toIndex, 0, from);
     setSlots(fromSide, fromSlots);
     setSlots(toSide, toSlots);
@@ -346,7 +404,6 @@ export const useVjStore = defineStore("vj", () => {
   function computeUvRect(
     src: ISource | null,
   ): [number, number, number, number] {
-    // offset.x, offset.y, scale.x, scale.y in UV space
     if (!src || !canvasEl.value) return [0, 0, 1, 1];
     const size = src.getContentSize ? src.getContentSize() : null;
     if (!size || size.width <= 0 || size.height <= 0) return [0, 0, 1, 1];
@@ -367,7 +424,6 @@ export const useVjStore = defineStore("vj", () => {
       offX = 0;
       offY = 0;
     } else if (mode === "cover") {
-      // scale up until both axes filled, then crop
       const scale =
         srcAspect > dstAspect
           ? dstAspect / srcAspect
@@ -384,16 +440,13 @@ export const useVjStore = defineStore("vj", () => {
         offY = (1 - scaleY) * 0.5;
       }
     } else {
-      // contain: entire image visible, letterbox/pillarbox
       if (srcAspect > dstAspect) {
-        // too wide → letterbox vertically
         const scale = dstAspect / srcAspect;
         scaleX = 1;
         scaleY = scale;
         offX = 0;
         offY = (1 - scaleY) * 0.5;
       } else {
-        // too tall → pillarbox horizontally
         const scale = srcAspect / dstAspect;
         scaleX = scale;
         scaleY = 1;
@@ -424,7 +477,6 @@ export const useVjStore = defineStore("vj", () => {
         const flipA = !!sourceA.value?.getFlipY?.();
         const flipB = !!sourceB.value?.getFlipY?.();
         compositor.value.setFlipY(flipA, flipB);
-        // UV rects per deck from source metadata
         const rectA = computeUvRect(sourceA.value);
         const rectB = computeUvRect(sourceB.value);
         compositor.value.setUvRects(rectA, rectB);
@@ -460,16 +512,17 @@ export const useVjStore = defineStore("vj", () => {
     leftSlots,
     rightSlots,
     loadImageIntoSlot,
+    loadVideoIntoSlot,
     loadSyphonIntoSlot,
     addImageToBank,
     addSyphonToBank,
+    addVideoToBank,
     setActiveFromSlot,
     instantiateFromDescriptor,
     exportDescriptorFromSlot,
     restoreSlotFromSaved,
     moveSlot,
     removeSlot,
-    // selection
     setSelectedSlot,
     getSelectedSlot,
     getSelectedSource,

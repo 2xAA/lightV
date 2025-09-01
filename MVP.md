@@ -68,11 +68,11 @@ Acceptance
 ---
 
 ## Slice 7 — VideoSource
-- [ ] Implement `VideoSource.ts` using `HTMLVideoElement` + `requestVideoFrameCallback` fallback; loop, pause/play controls.
-- [ ] Texture upload throttled to video frame rate; handle end/loop.
+- [X] Implement `VideoSource.ts` using `HTMLVideoElement` + `requestVideoFrameCallback` fallback; loop, pause/play controls.
+- [X] Texture upload throttled to video frame rate; handle end/loop.
 
 Acceptance
-- [ ] Local video plays smoothly; crossfading with other sources is glitch‑free.
+- [X] Local video plays smoothly; crossfading with other sources is glitch‑free.
 
 ---
 
