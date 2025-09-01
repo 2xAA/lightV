@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import ColorAverage from "./components/ColorAverage.vue";
+import CompositorCanvas from "./components/CompositorCanvas.vue";
+import Crossfader from "./components/Crossfader.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null
@@ -65,10 +67,12 @@ onBeforeUnmount(() => {
         </option>
       </select>
     </label>
-    <!-- <canvas ref="canvasRef" style="border: 1px solid #333; max-width: 100%"></canvas> -->
   </div>
 
-  <!-- <SyphonClientCanvas @fps="(v) => void v" /> -->
+  <div style="padding: 12px; display: grid; gap: 12px">
+    <div style="height: 320px; background: #000"><CompositorCanvas /></div>
+    <Crossfader />
+  </div>
 
   <ColorAverage />
 </template>

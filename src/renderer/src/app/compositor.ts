@@ -1,0 +1,217 @@
+export class Compositor {
+  canvas: HTMLCanvasElement;
+  gl: WebGL2RenderingContext | null;
+  program: WebGLProgram | null;
+  positionBuffer: WebGLBuffer | null;
+  texCoordBuffer: WebGLBuffer | null;
+  texA: WebGLTexture | null;
+  texB: WebGLTexture | null;
+  mixLocation: WebGLUniformLocation | null;
+  aPosLoc: number;
+  aUvLoc: number;
+  uTexALoc: WebGLUniformLocation | null;
+  uTexBLoc: WebGLUniformLocation | null;
+  _mix: number;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    this.gl = null;
+    this.program = null;
+    this.positionBuffer = null;
+    this.texCoordBuffer = null;
+    this.texA = null;
+    this.texB = null;
+    this.mixLocation = null;
+    this.aPosLoc = -1;
+    this.aUvLoc = -1;
+    this.uTexALoc = null;
+    this.uTexBLoc = null;
+    this._mix = 0;
+  }
+
+  init(): void {
+    const gl = this.canvas.getContext("webgl2");
+    if (!gl) throw new Error("WebGL2 not supported");
+    this.gl = gl;
+
+    const vs = `#version 300 es
+      in vec2 a_position;
+      in vec2 a_texCoord;
+      out vec2 v_uv;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        v_uv = a_texCoord;
+      }
+    `;
+
+    const fs = `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
+      uniform sampler2D u_texA;
+      uniform sampler2D u_texB;
+      uniform float u_mix;
+      void main() {
+        vec4 a = texture(u_texA, v_uv);
+        vec4 b = texture(u_texB, v_uv);
+        fragColor = mix(a, b, clamp(u_mix, 0.0, 1.0));
+      }
+    `;
+
+    const program = gl.createProgram();
+    if (!program) throw new Error("Failed to create program");
+    const vshader = this._createShader(gl.VERTEX_SHADER, vs);
+    const fshader = this._createShader(gl.FRAGMENT_SHADER, fs);
+    gl.attachShader(program, vshader);
+    gl.attachShader(program, fshader);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(`Program link error: ${gl.getProgramInfoLog(program)}`);
+    }
+    this.program = program;
+
+    this.aPosLoc = gl.getAttribLocation(program, "a_position");
+    this.aUvLoc = gl.getAttribLocation(program, "a_texCoord");
+    this.mixLocation = gl.getUniformLocation(program, "u_mix");
+    this.uTexALoc = gl.getUniformLocation(program, "u_texA");
+    this.uTexBLoc = gl.getUniformLocation(program, "u_texB");
+
+    // quad
+    this.positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, -1, 1, 1, -1, -1, 1, 1, -1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+
+    this.texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]),
+      gl.STATIC_DRAW,
+    );
+
+    // default 1x1 textures (magenta and cyan) for testing
+    this.texA = this._createSolidTexture(255, 0, 255, 255);
+    this.texB = this._createSolidTexture(0, 255, 255, 255);
+
+    this.resize(
+      this.canvas.clientWidth || 640,
+      this.canvas.clientHeight || 360,
+    );
+  }
+
+  _createShader(type: number, source: string): WebGLShader {
+    const gl = this.gl!;
+    const shader = gl.createShader(type)!;
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(shader);
+      gl.deleteShader(shader);
+      throw new Error(`Shader compile error: ${log}`);
+    }
+    return shader;
+  }
+
+  _createSolidTexture(
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+  ): WebGLTexture {
+    const gl = this.gl!;
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    const data = new Uint8Array([r, g, b, a]);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      data,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+
+  setSourceColors(
+    a: [number, number, number],
+    b: [number, number, number],
+  ): void {
+    const gl = this.gl!;
+    if (!this.texA || !this.texB) return;
+    const update: (tex: WebGLTexture, rgb: [number, number, number]) => void = (
+      tex,
+      rgb,
+    ) => {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      const data = new Uint8Array([rgb[0], rgb[1], rgb[2], 255]);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        data,
+      );
+    };
+    update(this.texA, a);
+    update(this.texB, b);
+  }
+
+  resize(width: number, height: number): void {
+    const gl = this.gl;
+    if (!gl) return;
+    const w = Math.max(1, Math.floor(width));
+    const h = Math.max(1, Math.floor(height));
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    gl.viewport(0, 0, w, h);
+  }
+
+  setMix(v: number): void {
+    this._mix = Math.max(0, Math.min(1, Number(v) || 0));
+  }
+
+  render(): void {
+    const gl = this.gl;
+    if (!gl || !this.program) return;
+
+    gl.useProgram(this.program);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    gl.enableVertexAttribArray(this.aPosLoc);
+    gl.vertexAttribPointer(this.aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+    gl.enableVertexAttribArray(this.aUvLoc);
+    gl.vertexAttribPointer(this.aUvLoc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.texA);
+    gl.uniform1i(this.uTexALoc, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.texB);
+    gl.uniform1i(this.uTexBLoc, 1);
+
+    gl.uniform1f(this.mixLocation, this._mix);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+}
