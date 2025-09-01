@@ -5,6 +5,7 @@ import CompositorCanvas from "./components/CompositorCanvas.vue";
 import Crossfader from "./components/Crossfader.vue";
 import AddImageSource from "./components/AddImageSource.vue";
 import AddSyphonSource from "./components/AddSyphonSource.vue";
+import Bank from "./components/Bank.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null
@@ -76,6 +77,18 @@ onBeforeUnmount(() => {
     <Crossfader />
     <AddImageSource />
     <AddSyphonSource />
+  </div>
+
+  <div
+    style="
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    "
+  >
+    <Bank side="left" />
+    <Bank side="right" />
   </div>
 
   <ColorAverage />

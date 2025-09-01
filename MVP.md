@@ -50,11 +50,11 @@ Acceptance
 ---
 
 ## Slice 5 — Banks UI (left/right)
-- [ ] `Bank.vue` (grid) and `SourceSlot.vue` with thumbnail, active state, and context menu (replace/remove).
-- [ ] Keyboard shortcuts (1–9 left, Q–O right) to select slots; enter to set active on deck.
+- [X] `Bank.vue` (grid) and `SourceSlot.vue` with thumbnail, active state, and context menu (replace/remove).
+- [X] Keyboard shortcuts (1–9 left, Q–O right) to select slots; enter to set active on deck.
 
 Acceptance
-- [ ] Can populate slots with sources; select and set active on A/B via UI and keyboard.
+- [X] Can populate slots with sources; select and set active on A/B via UI and keyboard.
 
 ---
 
