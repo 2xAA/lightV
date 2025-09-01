@@ -5,6 +5,7 @@ import type { ISource } from "../app/sources/ISource";
 import { registerSource, createSource } from "../app/sources/sourceRegistry";
 import { MockSource } from "../app/sources/MockSource";
 import { ImageSource } from "../app/sources/ImageSource";
+import { SyphonSource } from "../app/sources/SyphonSource";
 
 // register built-ins for now
 registerSource(
@@ -14,6 +15,15 @@ registerSource(
 registerSource(
   "image",
   ({ id, label, options }) => new ImageSource({ id, label, options }),
+);
+registerSource(
+  "syphon",
+  ({ id, label, options }) =>
+    new SyphonSource({
+      id,
+      label,
+      serverIndex: (options?.serverIndex as number) ?? undefined,
+    }),
 );
 
 export type DeckId = "A" | "B";
@@ -66,7 +76,6 @@ export const useVjStore = defineStore("vj", () => {
     if (!comp || !gl) return;
 
     if (deck === "A") {
-      // dispose previous
       if (sourceA.value) sourceA.value.dispose(gl);
       sourceA.value = src;
       sourceA.value.load(gl);
@@ -98,6 +107,19 @@ export const useVjStore = defineStore("vj", () => {
     setDeckSource(deck, img);
   }
 
+  async function loadSyphonIntoDeck(
+    deck: DeckId,
+    serverIndex: number,
+  ): Promise<void> {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    if (!comp || !gl) return;
+    const id = `${deck}-syphon-${serverIndex}-${Date.now()}`;
+    const s = new SyphonSource({ id, serverIndex });
+    await s.load(gl);
+    setDeckSource(deck, s);
+  }
+
   function start(): void {
     stop();
     const loop = (t: number) => {
@@ -115,6 +137,9 @@ export const useVjStore = defineStore("vj", () => {
             sourceB.value?.getTexture(gl) ?? null,
           );
         }
+        const flipA = !!sourceA.value?.getFlipY?.();
+        const flipB = !!sourceB.value?.getFlipY?.();
+        compositor.value.setFlipY(flipA, flipB);
         compositor.value.setMix(crossfade.value);
         compositor.value.render();
       }
@@ -143,5 +168,6 @@ export const useVjStore = defineStore("vj", () => {
     setCrossfade,
     loadImageIntoDeck,
     setDeckSource,
+    loadSyphonIntoDeck,
   };
 });

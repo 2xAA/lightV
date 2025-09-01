@@ -24,6 +24,16 @@ declare global {
         width: number;
         height: number;
       } | null>;
+      // multi-client
+      createClient: (serverIndex: number) => Promise<number | null>;
+      destroyClient: (clientId: number) => Promise<void>;
+      pullFrameForClient: (
+        clientId: number,
+      ) => Promise<{
+        buffer: ArrayBuffer;
+        width: number;
+        height: number;
+      } | null>;
     };
   }
 }

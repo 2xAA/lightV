@@ -11,6 +11,8 @@ export class Compositor {
   aUvLoc: number;
   uTexALoc: WebGLUniformLocation | null;
   uTexBLoc: WebGLUniformLocation | null;
+  uFlipYALoc: WebGLUniformLocation | null;
+  uFlipYBLoc: WebGLUniformLocation | null;
   _mix: number;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -26,6 +28,8 @@ export class Compositor {
     this.aUvLoc = -1;
     this.uTexALoc = null;
     this.uTexBLoc = null;
+    this.uFlipYALoc = null;
+    this.uFlipYBLoc = null;
     this._mix = 0;
   }
 
@@ -51,9 +55,14 @@ export class Compositor {
       uniform sampler2D u_texA;
       uniform sampler2D u_texB;
       uniform float u_mix;
+      uniform int u_flipYA; // 0 or 1
+      uniform int u_flipYB; // 0 or 1
+      vec2 uvFlip(vec2 uv, int flipY) { return flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
       void main() {
-        vec4 a = texture(u_texA, v_uv);
-        vec4 b = texture(u_texB, v_uv);
+        vec2 uvA = uvFlip(v_uv, u_flipYA);
+        vec2 uvB = uvFlip(v_uv, u_flipYB);
+        vec4 a = texture(u_texA, uvA);
+        vec4 b = texture(u_texB, uvB);
         fragColor = mix(a, b, clamp(u_mix, 0.0, 1.0));
       }
     `;
@@ -75,6 +84,8 @@ export class Compositor {
     this.mixLocation = gl.getUniformLocation(program, "u_mix");
     this.uTexALoc = gl.getUniformLocation(program, "u_texA");
     this.uTexBLoc = gl.getUniformLocation(program, "u_texB");
+    this.uFlipYALoc = gl.getUniformLocation(program, "u_flipYA");
+    this.uFlipYBLoc = gl.getUniformLocation(program, "u_flipYB");
 
     // quad
     this.positionBuffer = gl.createBuffer();
@@ -192,6 +203,14 @@ export class Compositor {
     if (!this.gl) return;
     if (texA) this.texA = texA;
     if (texB) this.texB = texB;
+  }
+
+  setFlipY(flipA: boolean, flipB: boolean): void {
+    const gl = this.gl;
+    if (!gl || !this.program) return;
+    gl.useProgram(this.program);
+    gl.uniform1i(this.uFlipYALoc, flipA ? 1 : 0);
+    gl.uniform1i(this.uFlipYBLoc, flipB ? 1 : 0);
   }
 
   getGL(): WebGL2RenderingContext | null {

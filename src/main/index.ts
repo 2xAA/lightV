@@ -23,9 +23,17 @@ let client: any | null = null;
 let currentFrameHandler: ((frame: any) => void) | null = null;
 let focusedWindow: BrowserWindow | null = null;
 
-// Cache the latest frame for pull-based IPC
+// Cache the latest frame for pull-based IPC (legacy single-client path)
 let latestFrame: { buffer: ArrayBuffer; width: number; height: number } | null =
   null;
+
+// Multi-client support
+type Frame = { buffer: ArrayBuffer; width: number; height: number };
+const clientMap = new Map<
+  number,
+  { client: any; handler: (frame: any) => void; latest: Frame | null }
+>();
+let nextClientId = 1;
 
 function deriveServerName(server: any): string {
   const app = server?.appName ?? server?.applicationName ?? null;
@@ -34,17 +42,26 @@ function deriveServerName(server: any): string {
   return parts.length > 0 ? String(parts.join(" - ")) : "";
 }
 
-function broadcastServers(): void {
-  if (!focusedWindow || !directory) return;
-  const list = directory.servers.map((s: any, i: number) => ({
+function currentServers(): Array<{ index: number; name: string }> {
+  if (!directory || !Array.isArray(directory.servers)) return [];
+  return directory.servers.map((s: any, i: number) => ({
     index: i,
     name: deriveServerName(s) || `Server ${i}`,
   }));
+}
+
+function broadcastServers(): void {
+  if (!focusedWindow || !directory) return;
+  const list = currentServers();
   focusedWindow.webContents.send("syphon:servers", list);
 }
 
 function startSyphon(): void {
-  if (directory) return;
+  if (directory) {
+    // Already listening: just broadcast current list to refresh renderer after reload
+    broadcastServers();
+    return;
+  }
   loadSyphon();
   directory = new SyphonServerDirectory();
 
@@ -90,6 +107,20 @@ function stopSyphon(): void {
   if (client) {
     detachClient();
   }
+  // dispose multi-clients
+  for (const [id, entry] of clientMap) {
+    try {
+      if (entry.client && entry.handler) {
+        if (typeof entry.client.off === "function")
+          entry.client.off("frame", entry.handler);
+        else if (typeof entry.client.removeListener === "function")
+          entry.client.removeListener("frame", entry.handler);
+        else if (typeof entry.client.removeAllListeners === "function")
+          entry.client.removeAllListeners("frame");
+      }
+    } catch {}
+    clientMap.delete(id);
+  }
   if (directory) {
     if (typeof directory.removeAllListeners === "function") {
       directory.removeAllListeners();
@@ -109,7 +140,6 @@ function attachClientForServer(server: any): void {
     const width: number = frame.width;
     const height: number = frame.height;
     const buf: Buffer = frame.buffer;
-    // Copy to ArrayBuffer to cross the IPC boundary efficiently on demand
     const ab = new ArrayBuffer(buf.byteLength);
     const view = new Uint8Array(ab);
     view.set(buf);
@@ -127,6 +157,53 @@ function selectServer(index: number): void {
   const server = directory.servers[index];
   if (!server) return;
   attachClientForServer(server);
+}
+
+// Multi-client helpers
+function createClientForServerIndex(index: number): number | null {
+  if (!directory) return null;
+  const server = directory.servers[index];
+  if (!server) return null;
+  const c = new SyphonOpenGLClient(server);
+  const id = nextClientId++;
+  const entry = {
+    client: c,
+    handler: (frame: any) => {
+      const width: number = frame.width;
+      const height: number = frame.height;
+      const buf: Buffer = frame.buffer;
+      const ab = new ArrayBuffer(buf.byteLength);
+      const view = new Uint8Array(ab);
+      view.set(buf);
+      const f: Frame = { buffer: ab, width, height };
+      const e = clientMap.get(id);
+      if (e) e.latest = f;
+    },
+    latest: null as Frame | null,
+  };
+  if (typeof c.on === "function") c.on("frame", entry.handler);
+  else if (typeof c.addListener === "function")
+    c.addListener("frame", entry.handler);
+  clientMap.set(id, entry);
+  return id;
+}
+
+function destroyClient(clientId: number): void {
+  const entry = clientMap.get(clientId);
+  if (!entry) return;
+  try {
+    if (typeof entry.client.off === "function")
+      entry.client.off("frame", entry.handler);
+    else if (typeof entry.client.removeListener === "function")
+      entry.client.removeListener("frame", entry.handler);
+    else if (typeof entry.client.removeAllListeners === "function")
+      entry.client.removeAllListeners("frame");
+  } catch {}
+  clientMap.delete(clientId);
+}
+
+function pullFrameForClient(clientId: number): Frame | null {
+  return clientMap.get(clientId)?.latest ?? null;
 }
 
 function createWindow(): void {
@@ -188,9 +265,25 @@ app.whenReady().then(() => {
   ipcMain.handle("syphon/selectServer", (_evt, { index }) =>
     selectServer(Number(index)),
   );
-  // Pull latest frame (if any)
   ipcMain.handle("syphon/pullFrame", () => {
     return latestFrame;
+  });
+
+  // Multi-client IPC
+  ipcMain.handle("syphon/createClient", (_evt, { serverIndex }) => {
+    startSyphon();
+    return createClientForServerIndex(Number(serverIndex));
+  });
+  ipcMain.handle("syphon/destroyClient", (_evt, { clientId }) => {
+    destroyClient(Number(clientId));
+  });
+  ipcMain.handle("syphon/pullFrameForClient", (_evt, { clientId }) => {
+    return pullFrameForClient(Number(clientId));
+  });
+  // Direct servers query
+  ipcMain.handle("syphon/getServers", () => {
+    startSyphon();
+    return currentServers();
   });
 
   // IPC test
@@ -199,20 +292,12 @@ app.whenReady().then(() => {
   createWindow();
 
   app.on("activate", function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

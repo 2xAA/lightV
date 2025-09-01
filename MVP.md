@@ -41,11 +41,11 @@ Acceptance
 ---
 
 ## Slice 4 — SyphonSource integration
-- [ ] Wrap existing Syphon path to conform to `ISource` and supply a WebGL texture.
-- [ ] Normalize color space/premultiplication to match other sources.
+- [X] Wrap existing Syphon path to conform to `ISource` and supply a WebGL texture.
+- [X] Normalize color space/premultiplication to match other sources.
 
 Acceptance
-- [ ] Syphon appears as a selectable source; behaves identically to others re: scaling/fill.
+- [X] Syphon appears as a selectable source; behaves identically to others re: scaling/fill.
 
 ---
 

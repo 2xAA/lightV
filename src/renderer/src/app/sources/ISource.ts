@@ -22,6 +22,8 @@ export interface ISource {
   // rendering
   getTexture(gl: WebGL2RenderingContext): WebGLTexture | null;
   tick(dtMs: number): void;
+  // optional flip for sampler
+  getFlipY?(): boolean;
   // optional options API (to be expanded later)
   getOptionsSchema?(): Record<string, unknown>;
   setOptions?(partial: ISourceOptions): void;

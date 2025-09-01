@@ -38,62 +38,80 @@ function ensureIpcSubscriptions(): void {
   );
 }
 
-const api = {
-  syphon: {
-    start: (): void => {
-      ensureIpcSubscriptions();
-      ipcRenderer.invoke("syphon/start");
-    },
-    stop: (): void => {
-      ipcRenderer.invoke("syphon/stop");
-    },
-    onFrame: (
-      listener: (data: {
-        buffer: Uint8Array;
-        width: number;
-        height: number;
-      }) => void,
-    ): (() => void) => {
-      frameListeners.push(listener);
-      return () => {
-        const idx = frameListeners.indexOf(listener);
-        if (idx >= 0) frameListeners.splice(idx, 1);
-      };
-    },
-    getServers: (): Array<{ index: number; name: string }> => {
-      return lastServers;
-    },
-    onServersChanged: (
-      listener: (servers: Array<{ index: number; name: string }>) => void,
-    ): (() => void) => {
-      ensureIpcSubscriptions();
-      serverListeners.push(listener);
-      return () => {
-        const idx = serverListeners.indexOf(listener);
-        if (idx >= 0) serverListeners.splice(idx, 1);
-      };
-    },
-    selectServer: (index: number): void => {
-      ipcRenderer.invoke("syphon/selectServer", { index });
-    },
-    pullFrame: async (): Promise<{
-      buffer: ArrayBuffer;
+async function fetchServersNow(): Promise<
+  Array<{ index: number; name: string }>
+> {
+  const list = await ipcRenderer.invoke("syphon/getServers");
+  lastServers = Array.isArray(list) ? list : [];
+  return lastServers;
+}
+
+const syphonApi = {
+  start: async (): Promise<void> => {
+    ensureIpcSubscriptions();
+    await ipcRenderer.invoke("syphon/start");
+    await fetchServersNow();
+  },
+  stop: (): void => {
+    ipcRenderer.invoke("syphon/stop");
+  },
+  onFrame: (
+    listener: (data: {
+      buffer: Uint8Array;
       width: number;
       height: number;
-    } | null> => {
-      return ipcRenderer.invoke("syphon/pullFrame");
-    },
+    }) => void,
+  ): (() => void) => {
+    frameListeners.push(listener);
+    return () => {
+      const idx = frameListeners.indexOf(listener);
+      if (idx >= 0) frameListeners.splice(idx, 1);
+    };
+  },
+  getServers: (): Array<{ index: number; name: string }> => {
+    return lastServers;
+  },
+  onServersChanged: (
+    listener: (servers: Array<{ index: number; name: string }>) => void,
+  ): (() => void) => {
+    ensureIpcSubscriptions();
+    serverListeners.push(listener);
+    return () => {
+      const idx = serverListeners.indexOf(listener);
+      if (idx >= 0) serverListeners.splice(idx, 1);
+    };
+  },
+  selectServer: (index: number): void => {
+    ipcRenderer.invoke("syphon/selectServer", { index });
+  },
+  pullFrame: async (): Promise<{
+    buffer: ArrayBuffer;
+    width: number;
+    height: number;
+  } | null> => {
+    return ipcRenderer.invoke("syphon/pullFrame");
+  },
+  // multi-client
+  createClient: async (serverIndex: number): Promise<number | null> => {
+    return ipcRenderer.invoke("syphon/createClient", { serverIndex });
+  },
+  destroyClient: async (clientId: number): Promise<void> => {
+    return ipcRenderer.invoke("syphon/destroyClient", { clientId });
+  },
+  pullFrameForClient: async (
+    clientId: number,
+  ): Promise<{ buffer: ArrayBuffer; width: number; height: number } | null> => {
+    return ipcRenderer.invoke("syphon/pullFrameForClient", { clientId });
   },
 };
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+const api = { syphon: syphonApi } as const;
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld("electron", electronAPI);
     contextBridge.exposeInMainWorld("api", api);
-    contextBridge.exposeInMainWorld("syphon", api.syphon);
+    contextBridge.exposeInMainWorld("syphon", syphonApi as any);
   } catch (error) {
     console.error(error);
   }
@@ -103,5 +121,5 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.api = api;
   // @ts-ignore (define in dts)
-  window.syphon = api.syphon;
+  window.syphon = syphonApi as any;
 }

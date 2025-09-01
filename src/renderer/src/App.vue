@@ -4,6 +4,7 @@ import ColorAverage from "./components/ColorAverage.vue";
 import CompositorCanvas from "./components/CompositorCanvas.vue";
 import Crossfader from "./components/Crossfader.vue";
 import AddImageSource from "./components/AddImageSource.vue";
+import AddSyphonSource from "./components/AddSyphonSource.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null
@@ -74,6 +75,7 @@ onBeforeUnmount(() => {
     <div style="height: 320px; background: #000"><CompositorCanvas /></div>
     <Crossfader />
     <AddImageSource />
+    <AddSyphonSource />
   </div>
 
   <ColorAverage />
