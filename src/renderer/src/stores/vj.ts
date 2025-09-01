@@ -57,6 +57,10 @@ export const useVjStore = defineStore("vj", () => {
   const crossfade = ref(0); // 0 -> A, 1 -> B
   const crossfadeCurve = ref<"linear" | "equalPower">("linear");
   const blendMode = ref<"normal" | "add" | "multiply" | "screen">("normal");
+  const transitionType = ref<"crossfade" | "wipe" | "luma">("crossfade");
+  const transitionSoftness = ref(0.05); // 0..0.5
+  const transitionAngleRad = ref(0); // wipe angle
+  const transitionLumaInvert = ref(false);
   const compositor = shallowRef<Compositor | null>(null);
   const canvasEl = ref<HTMLCanvasElement | null>(null);
   let rafId: number | null = null;
@@ -651,6 +655,19 @@ export const useVjStore = defineStore("vj", () => {
                 ? 2
                 : 3;
         (compositor.value as any).setBlendMode?.(modeIndex);
+        const trIndex =
+          transitionType.value === "crossfade"
+            ? 0
+            : transitionType.value === "wipe"
+              ? 1
+              : 2;
+        (compositor.value as any).setTransitionType?.(trIndex);
+        (compositor.value as any).setTransitionParams?.([
+          Math.max(0, Math.min(0.5, transitionSoftness.value)),
+          transitionAngleRad.value,
+          transitionLumaInvert.value ? 1 : 0,
+          0,
+        ]);
         compositor.value.render();
       }
       rafId = requestAnimationFrame(loop);
@@ -677,10 +694,27 @@ export const useVjStore = defineStore("vj", () => {
     blendMode.value = mode;
   }
 
+  function setTransitionTypeUI(type: "crossfade" | "wipe" | "luma"): void {
+    transitionType.value = type;
+  }
+  function setTransitionSoftness(v: number): void {
+    transitionSoftness.value = Math.max(0, Math.min(0.5, Number(v) || 0));
+  }
+  function setTransitionAngleRad(v: number): void {
+    transitionAngleRad.value = Number(v) || 0;
+  }
+  function setTransitionLumaInvert(on: boolean): void {
+    transitionLumaInvert.value = !!on;
+  }
+
   return {
     crossfade,
     crossfadeCurve,
     blendMode,
+    transitionType,
+    transitionSoftness,
+    transitionAngleRad,
+    transitionLumaInvert,
     compositor,
     init,
     start,
@@ -688,6 +722,10 @@ export const useVjStore = defineStore("vj", () => {
     setCrossfade,
     setCrossfadeCurve,
     setBlendMode,
+    setTransitionTypeUI,
+    setTransitionSoftness,
+    setTransitionAngleRad,
+    setTransitionLumaInvert,
     pauseInactiveWebcams,
     loadImageIntoDeck,
     loadSyphonIntoDeck,

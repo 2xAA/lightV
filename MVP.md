@@ -107,11 +107,11 @@ Acceptance
 ---
 
 ## Slice 11 — Transitions framework
-- [ ] Extend compositor with pluggable transitions: `crossfade`, `add`, `multiply`, `wipe`, `luma`.
-- [ ] Small UI to choose transition and parameters.
+- [X] Extend compositor with pluggable transitions: `crossfade`, `add`, `multiply`, `wipe`, `luma`.
+- [X] Small UI to choose transition and parameters.
 
 Acceptance
-- [ ] Switching transitions updates output immediately; parameters adjustable live.
+- [X] Switching transitions updates output immediately; parameters adjustable live.
 
 ---
 

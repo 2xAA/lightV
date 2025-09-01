@@ -18,6 +18,10 @@ export class Compositor {
   _mix: number;
   uModeLoc: WebGLUniformLocation | null;
   _mode: number;
+  uTransitionLoc: WebGLUniformLocation | null;
+  uTParamsLoc: WebGLUniformLocation | null;
+  _transition: number;
+  _tParams: [number, number, number, number];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -39,6 +43,10 @@ export class Compositor {
     this._mix = 0;
     this.uModeLoc = null;
     this._mode = 0;
+    this.uTransitionLoc = null;
+    this.uTParamsLoc = null;
+    this._transition = 0;
+    this._tParams = [0, 0, 0, 0];
   }
 
   init(): void {
@@ -68,6 +76,8 @@ export class Compositor {
       uniform vec4 u_uvRectA; // offset.xy, scale.xy
       uniform vec4 u_uvRectB; // offset.xy, scale.xy
       uniform int u_mode; // 0=normal,1=add,2=multiply,3=screen
+      uniform int u_transition; // 0=crossfade,1=wipe,2=luma
+      uniform vec4 u_tParams; // x=softness, y=angleRadians (wipe) or invert(0/1 for luma)
       vec2 uvFlip(vec2 uv, int flipY) { return flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
       vec2 applyRect(vec2 uv, vec4 rect) { return rect.xy + uv * rect.zw; }
       void main() {
@@ -78,7 +88,23 @@ export class Compositor {
         vec4 a = texture(u_texA, uvA);
         vec4 b = texture(u_texB, uvB);
         float t = clamp(u_mix, 0.0, 1.0);
-        vec4 base = mix(a, b, t);
+        float s = t;
+        if (u_transition == 1) {
+          float softness = clamp(u_tParams.x, 0.0, 0.5);
+          float ang = u_tParams.y; // radians
+          vec2 dir = vec2(cos(ang), sin(ang));
+          vec2 p = v_uv - 0.5;
+          float proj = dot(normalize(dir), p);
+          float projN = proj * 1.41421356 * 0.5 + 0.5; // map approx [-0.707,0.707] to [0,1]
+          s = smoothstep(projN - softness, projN + softness, t);
+        } else if (u_transition == 2) {
+          float softness = clamp(u_tParams.x, 0.0, 0.5);
+          float inv = clamp(u_tParams.y, 0.0, 1.0);
+          float l = dot(b.rgb, vec3(0.299, 0.587, 0.114));
+          float lum = mix(l, 1.0 - l, inv);
+          s = smoothstep(lum - softness, lum + softness, t);
+        }
+        vec4 base = mix(a, b, s);
         if (u_mode == 0) {
           fragColor = base;
         } else {
@@ -86,7 +112,7 @@ export class Compositor {
           vec4 mulC = a * b;
           vec4 scrC = 1.0 - (1.0 - a) * (1.0 - b);
           vec4 modeC = (u_mode == 1) ? addC : (u_mode == 2) ? mulC : scrC;
-          float overlap = 1.0 - abs(2.0 * t - 1.0);
+          float overlap = 1.0 - abs(2.0 * s - 1.0);
           fragColor = mix(base, modeC, overlap);
         }
       }
@@ -114,6 +140,8 @@ export class Compositor {
     this.uUvRectALoc = gl.getUniformLocation(program, "u_uvRectA");
     this.uUvRectBLoc = gl.getUniformLocation(program, "u_uvRectB");
     this.uModeLoc = gl.getUniformLocation(program, "u_mode");
+    this.uTransitionLoc = gl.getUniformLocation(program, "u_transition");
+    this.uTParamsLoc = gl.getUniformLocation(program, "u_tParams");
 
     // quad
     this.positionBuffer = gl.createBuffer();
@@ -231,6 +259,19 @@ export class Compositor {
     this._mode = mode | 0;
   }
 
+  setTransitionType(type: number): void {
+    this._transition = type | 0;
+  }
+
+  setTransitionParams(p: [number, number, number, number]): void {
+    this._tParams = [
+      Number(p[0]) || 0,
+      Number(p[1]) || 0,
+      Number(p[2]) || 0,
+      Number(p[3]) || 0,
+    ];
+  }
+
   setTextures(texA: WebGLTexture | null, texB: WebGLTexture | null): void {
     if (!this.gl) return;
     if (texA) this.texA = texA;
@@ -307,6 +348,14 @@ export class Compositor {
 
     gl.uniform1f(this.mixLocation, this._mix);
     gl.uniform1i(this.uModeLoc, this._mode);
+    gl.uniform1i(this.uTransitionLoc, this._transition);
+    gl.uniform4f(
+      this.uTParamsLoc,
+      this._tParams[0],
+      this._tParams[1],
+      this._tParams[2],
+      this._tParams[3],
+    );
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }

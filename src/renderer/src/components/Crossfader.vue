@@ -17,6 +17,27 @@ const mode = computed({
   get: () => store.blendMode,
   set: (m: "normal" | "add" | "multiply" | "screen") => store.setBlendMode(m),
 });
+
+const trType = computed({
+  get: () => store.transitionType,
+  set: (t: "crossfade" | "wipe" | "luma") => store.setTransitionTypeUI(t),
+});
+
+const trSoftness = computed({
+  get: () => store.transitionSoftness,
+  set: (v: number) => store.setTransitionSoftness(v),
+});
+
+const trAngleDeg = computed({
+  get: () => Math.round((store.transitionAngleRad * 180) / Math.PI),
+  set: (deg: number) =>
+    store.setTransitionAngleRad(((Number(deg) || 0) * Math.PI) / 180),
+});
+
+const trInvert = computed({
+  get: () => store.transitionLumaInvert,
+  set: (on: boolean) => store.setTransitionLumaInvert(on),
+});
 </script>
 
 <template>
@@ -40,6 +61,43 @@ const mode = computed({
           <option value="screen">Screen</option>
         </select>
       </label>
+      <label style="font-size: 12px">
+        Transition
+        <select v-model="trType">
+          <option value="crossfade">Crossfade</option>
+          <option value="wipe">Wipe</option>
+          <option value="luma">Luma</option>
+        </select>
+      </label>
+      <template v-if="trType !== 'crossfade'">
+        <label v-if="trType === 'wipe'" style="font-size: 12px">
+          Angle
+          <input
+            v-model.number="trAngleDeg"
+            type="number"
+            min="0"
+            max="360"
+            step="1"
+            style="width: 64px"
+          />
+        </label>
+        <label style="font-size: 12px">
+          Softness
+          <input
+            v-model.number="trSoftness"
+            type="range"
+            min="0"
+            max="0.5"
+            step="0.005"
+          />
+        </label>
+        <label
+          v-if="trType === 'luma'"
+          style="font-size: 12px; display: flex; gap: 4px; align-items: center"
+        >
+          <input v-model="trInvert" type="checkbox" /> Invert
+        </label>
+      </template>
     </div>
   </div>
 </template>
