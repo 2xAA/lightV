@@ -59,11 +59,11 @@ Acceptance
 ---
 
 ## Slice 6 — Source Options Panel
-- [ ] `SourceOptionsPanel.vue` renders dynamic form from `getOptionsSchema()` of the selected slot’s source.
-- [ ] Changes debounce and call `setOptions`.
+- [X] `SourceOptionsPanel.vue` renders dynamic form from `getOptionsSchema()` of the selected slot’s source.
+- [X] Changes debounce and call `setOptions`.
 
 Acceptance
-- [ ] Options update the live rendering without stutter; persisted per-slot in store state.
+- [X] Options update the live rendering without stutter; persisted per-slot in store state.
 
 ---
 
@@ -83,6 +83,10 @@ Acceptance
 - [ ] Webcam appears as a source; switching away stops camera access.
 
 ---
+
+## Slice 8-B -- Crossfader Modes
+- [ ] Implement different crossfader curves like a dj mixer
+- [ ] Implement different colour mix modes
 
 ## Slice 9 — ShaderSource
 - [ ] Implement `ShaderSource.ts` for user frag shaders with common uniforms (`time`, `resolution`, `mix`, optional `audio` later).

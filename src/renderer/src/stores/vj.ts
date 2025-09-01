@@ -53,6 +53,10 @@ export const useVjStore = defineStore("vj", () => {
   const leftSlots = ref<SlotModel[]>([]);
   const rightSlots = ref<SlotModel[]>([]);
 
+  // selection per bank
+  const selectedLeftIndex = ref<number | null>(null);
+  const selectedRightIndex = ref<number | null>(null);
+
   const getSlots = (side: BankSide) =>
     side === "left" ? leftSlots.value : rightSlots.value;
   const setSlots = (side: BankSide, next: SlotModel[]) => {
@@ -60,7 +64,21 @@ export const useVjStore = defineStore("vj", () => {
     else rightSlots.value = next;
   };
 
-  const deckForSide = (side: BankSide): DeckId => (side === "left" ? "A" : "B");
+  function setSelectedSlot(side: BankSide, index: number | null): void {
+    if (side === "left") selectedLeftIndex.value = index;
+    else selectedRightIndex.value = index;
+  }
+
+  function getSelectedSlot(side: BankSide): number | null {
+    return side === "left" ? selectedLeftIndex.value : selectedRightIndex.value;
+  }
+
+  function getSelectedSource(side: BankSide): ISource | null {
+    const idx = getSelectedSlot(side);
+    if (idx == null) return null;
+    const slots = getSlots(side);
+    return slots[idx]?.source ?? null;
+  }
 
   function init(canvas: HTMLCanvasElement): void {
     canvasEl.value = canvas;
@@ -320,8 +338,70 @@ export const useVjStore = defineStore("vj", () => {
     const slots = getSlots(side);
     const slot = slots[index];
     if (!slot || !slot.source) return;
-    const deck = deckForSide(side);
+    const deck = side === "left" ? "A" : "B";
     setDeckSource(deck, slot.source);
+    setSelectedSlot(side, index);
+  }
+
+  function computeUvRect(
+    src: ISource | null,
+  ): [number, number, number, number] {
+    // offset.x, offset.y, scale.x, scale.y in UV space
+    if (!src || !canvasEl.value) return [0, 0, 1, 1];
+    const size = src.getContentSize ? src.getContentSize() : null;
+    if (!size || size.width <= 0 || size.height <= 0) return [0, 0, 1, 1];
+    const cw = canvasEl.value.width || 1;
+    const ch = canvasEl.value.height || 1;
+    const sw = size.width;
+    const sh = size.height;
+    const srcAspect = sw / sh;
+    const dstAspect = cw / ch;
+    const mode = src.getFillMode ? src.getFillMode() : "cover";
+    let scaleX = 1;
+    let scaleY = 1;
+    let offX = 0;
+    let offY = 0;
+    if (mode === "stretch") {
+      scaleX = 1;
+      scaleY = 1;
+      offX = 0;
+      offY = 0;
+    } else if (mode === "cover") {
+      // scale up until both axes filled, then crop
+      const scale =
+        srcAspect > dstAspect
+          ? dstAspect / srcAspect
+          : 1 / (srcAspect / dstAspect);
+      if (srcAspect > dstAspect) {
+        scaleX = scale;
+        scaleY = 1;
+        offX = (1 - scaleX) * 0.5;
+        offY = 0;
+      } else {
+        scaleX = 1;
+        scaleY = scale;
+        offX = 0;
+        offY = (1 - scaleY) * 0.5;
+      }
+    } else {
+      // contain: entire image visible, letterbox/pillarbox
+      if (srcAspect > dstAspect) {
+        // too wide → letterbox vertically
+        const scale = dstAspect / srcAspect;
+        scaleX = 1;
+        scaleY = scale;
+        offX = 0;
+        offY = (1 - scaleY) * 0.5;
+      } else {
+        // too tall → pillarbox horizontally
+        const scale = srcAspect / dstAspect;
+        scaleX = scale;
+        scaleY = 1;
+        offX = (1 - scaleX) * 0.5;
+        offY = 0;
+      }
+    }
+    return [offX, offY, scaleX, scaleY];
   }
 
   function start(): void {
@@ -344,6 +424,10 @@ export const useVjStore = defineStore("vj", () => {
         const flipA = !!sourceA.value?.getFlipY?.();
         const flipB = !!sourceB.value?.getFlipY?.();
         compositor.value.setFlipY(flipA, flipB);
+        // UV rects per deck from source metadata
+        const rectA = computeUvRect(sourceA.value);
+        const rectB = computeUvRect(sourceB.value);
+        compositor.value.setUvRects(rectA, rectB);
         compositor.value.setMix(crossfade.value);
         compositor.value.render();
       }
@@ -385,5 +469,9 @@ export const useVjStore = defineStore("vj", () => {
     restoreSlotFromSaved,
     moveSlot,
     removeSlot,
+    // selection
+    setSelectedSlot,
+    getSelectedSlot,
+    getSelectedSource,
   };
 });

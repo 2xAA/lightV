@@ -34,6 +34,28 @@ export class ImageSource implements ISource {
     this.fillMode = (options?.fillMode as FillMode) || "cover";
   }
 
+  getOptionsSchema() {
+    return [
+      {
+        key: "fillMode",
+        label: "Fill mode",
+        type: "select" as const,
+        value: this.fillMode,
+        options: [
+          { label: "Cover", value: "cover" },
+          { label: "Contain", value: "contain" },
+          { label: "Stretch", value: "stretch" },
+        ],
+      },
+    ];
+  }
+
+  setOptions(partial: { [key: string]: unknown }): void {
+    if (partial && (partial as any).fillMode) {
+      this.setFillMode((partial as any).fillMode as FillMode);
+    }
+  }
+
   async setFile(file: File): Promise<void> {
     // Prefer data URL to satisfy strict CSP without blob:
     const asDataUrl = await new Promise<string>((resolve, reject) => {

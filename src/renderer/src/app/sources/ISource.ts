@@ -10,6 +10,17 @@ export interface ISourceOptions {
   [key: string]: unknown;
 }
 
+export type OptionField = {
+  key: string;
+  label: string;
+  type: "select" | "checkbox" | "number" | "text";
+  value: unknown;
+  options?: Array<{ label: string; value: unknown }>;
+  min?: number;
+  max?: number;
+  step?: number;
+};
+
 export interface ISource {
   id: string;
   type: SourceType;
@@ -24,7 +35,10 @@ export interface ISource {
   tick(dtMs: number): void;
   // optional flip for sampler
   getFlipY?(): boolean;
-  // optional options API (to be expanded later)
-  getOptionsSchema?(): Record<string, unknown>;
-  setOptions?(partial: ISourceOptions): void;
+  // optional metadata for layout
+  getContentSize?(): { width: number; height: number } | null;
+  getFillMode?(): "cover" | "contain" | "stretch";
+  // options API
+  getOptionsSchema?(): OptionField[];
+  setOptions?(partial: ISourceOptions): Promise<void> | void;
 }

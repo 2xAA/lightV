@@ -44,6 +44,10 @@ async function addSyphon(): Promise<void> {
 function setActive(): void {
   store.setActiveFromSlot(props.side, props.index);
 }
+
+function select(): void {
+  store.setSelectedSlot(props.side, props.index);
+}
 </script>
 
 <template>
@@ -55,7 +59,9 @@ function setActive(): void {
       min-height: 76px;
       display: grid;
       gap: 6px;
+      cursor: pointer;
     "
+    @click="type ? select() : undefined"
   >
     <template v-if="type">
       <div
@@ -76,7 +82,7 @@ function setActive(): void {
         >
           {{ label }}
         </div>
-        <button @click="setActive">Set Active</button>
+        <button @click.stop="setActive">Set Active</button>
       </div>
     </template>
     <template v-else>

@@ -13,6 +13,8 @@ export class Compositor {
   uTexBLoc: WebGLUniformLocation | null;
   uFlipYALoc: WebGLUniformLocation | null;
   uFlipYBLoc: WebGLUniformLocation | null;
+  uUvRectALoc: WebGLUniformLocation | null;
+  uUvRectBLoc: WebGLUniformLocation | null;
   _mix: number;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -30,6 +32,8 @@ export class Compositor {
     this.uTexBLoc = null;
     this.uFlipYALoc = null;
     this.uFlipYBLoc = null;
+    this.uUvRectALoc = null;
+    this.uUvRectBLoc = null;
     this._mix = 0;
   }
 
@@ -57,10 +61,15 @@ export class Compositor {
       uniform float u_mix;
       uniform int u_flipYA; // 0 or 1
       uniform int u_flipYB; // 0 or 1
+      uniform vec4 u_uvRectA; // offset.xy, scale.xy
+      uniform vec4 u_uvRectB; // offset.xy, scale.xy
       vec2 uvFlip(vec2 uv, int flipY) { return flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
+      vec2 applyRect(vec2 uv, vec4 rect) { return rect.xy + uv * rect.zw; }
       void main() {
         vec2 uvA = uvFlip(v_uv, u_flipYA);
         vec2 uvB = uvFlip(v_uv, u_flipYB);
+        uvA = applyRect(uvA, u_uvRectA);
+        uvB = applyRect(uvB, u_uvRectB);
         vec4 a = texture(u_texA, uvA);
         vec4 b = texture(u_texB, uvB);
         fragColor = mix(a, b, clamp(u_mix, 0.0, 1.0));
@@ -86,6 +95,8 @@ export class Compositor {
     this.uTexBLoc = gl.getUniformLocation(program, "u_texB");
     this.uFlipYALoc = gl.getUniformLocation(program, "u_flipYA");
     this.uFlipYBLoc = gl.getUniformLocation(program, "u_flipYB");
+    this.uUvRectALoc = gl.getUniformLocation(program, "u_uvRectA");
+    this.uUvRectBLoc = gl.getUniformLocation(program, "u_uvRectB");
 
     // quad
     this.positionBuffer = gl.createBuffer();
@@ -215,6 +226,17 @@ export class Compositor {
 
   getGL(): WebGL2RenderingContext | null {
     return this.gl;
+  }
+
+  setUvRects(
+    rectA: [number, number, number, number],
+    rectB: [number, number, number, number],
+  ): void {
+    const gl = this.gl;
+    if (!gl || !this.program) return;
+    gl.useProgram(this.program);
+    gl.uniform4f(this.uUvRectALoc, rectA[0], rectA[1], rectA[2], rectA[3]);
+    gl.uniform4f(this.uUvRectBLoc, rectB[0], rectB[1], rectB[2], rectB[3]);
   }
 
   render(): void {

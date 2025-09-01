@@ -1,5 +1,7 @@
 import type { ISource } from "./ISource";
 
+export type FillMode = "cover" | "contain" | "stretch";
+
 export class SyphonSource implements ISource {
   id: string;
   type = "syphon" as const;
@@ -12,6 +14,7 @@ export class SyphonSource implements ISource {
   private gl: WebGL2RenderingContext | null;
   private clientId: number | null;
   private serverIndex: number | null;
+  private fillMode: FillMode;
 
   constructor({
     id,
@@ -32,10 +35,43 @@ export class SyphonSource implements ISource {
     this.gl = null;
     this.clientId = null;
     this.serverIndex = serverIndex ?? null;
+    this.fillMode = "cover";
   }
 
   getFlipY(): boolean {
     return true;
+  }
+
+  getContentSize(): { width: number; height: number } | null {
+    if (this.width > 0 && this.height > 0)
+      return { width: this.width, height: this.height };
+    return null;
+  }
+
+  getFillMode(): FillMode {
+    return this.fillMode;
+  }
+
+  getOptionsSchema() {
+    return [
+      {
+        key: "fillMode",
+        label: "Fill mode",
+        type: "select" as const,
+        value: this.fillMode,
+        options: [
+          { label: "Cover", value: "cover" },
+          { label: "Contain", value: "contain" },
+          { label: "Stretch", value: "stretch" },
+        ],
+      },
+    ];
+  }
+
+  setOptions(partial: { [key: string]: unknown }): void {
+    if (partial && (partial as any).fillMode) {
+      this.fillMode = (partial as any).fillMode as FillMode;
+    }
   }
 
   async setServerIndex(index: number): Promise<void> {

@@ -6,6 +6,7 @@ import Crossfader from "./components/Crossfader.vue";
 import AddImageSource from "./components/AddImageSource.vue";
 import AddSyphonSource from "./components/AddSyphonSource.vue";
 import Bank from "./components/Bank.vue";
+import SourceOptionsPanel from "./components/SourceOptionsPanel.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null
@@ -73,10 +74,23 @@ onBeforeUnmount(() => {
   </div>
 
   <div style="padding: 12px; display: grid; gap: 12px">
-    <div style="height: 320px; background: #000"><CompositorCanvas /></div>
-    <Crossfader />
-    <AddImageSource />
-    <AddSyphonSource />
+    <div
+      style="
+        display: grid;
+        grid-template-columns: 240px 1fr 240px;
+        gap: 12px;
+        align-items: start;
+      "
+    >
+      <SourceOptionsPanel side="left" />
+      <div style="display: grid; gap: 12px">
+        <div style="height: 320px; background: #000"><CompositorCanvas /></div>
+        <Crossfader />
+        <AddImageSource />
+        <AddSyphonSource />
+      </div>
+      <SourceOptionsPanel side="right" />
+    </div>
   </div>
 
   <div
