@@ -21,6 +21,9 @@ function addVideo(): void {
 async function addWebcam(): Promise<void> {
   await store.addWebcamToBank(props.side);
 }
+async function addShader(): Promise<void> {
+  await store.addShaderToBank(props.side);
+}
 
 async function onImageChange(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
@@ -80,6 +83,7 @@ async function addSyphon(): Promise<void> {
           <button @click="addImage">+ Image</button>
           <button @click="addVideo">+ Video</button>
           <button @click="addWebcam">+ Webcam</button>
+          <button @click="addShader">+ Shader</button>
           <button @click="addSyphon">+ Syphon</button>
           <input
             ref="imageInput"
@@ -115,6 +119,7 @@ async function addSyphon(): Promise<void> {
           <button aria-label="Add image" @click="addImage">+ Image</button>
           <button aria-label="Add video" @click="addVideo">+ Video</button>
           <button aria-label="Add webcam" @click="addWebcam">+ Webcam</button>
+          <button aria-label="Add shader" @click="addShader">+ Shader</button>
           <input
             ref="imageInput"
             type="file"

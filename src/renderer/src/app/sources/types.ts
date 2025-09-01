@@ -34,8 +34,16 @@ export type WebcamSourceDescriptor = {
   options?: DescriptorOptionsBase;
 };
 
+export type ShaderSourceDescriptor = {
+  type: "shader";
+  label: string;
+  frag: string;
+  options?: DescriptorOptionsBase;
+};
+
 export type SourceDescriptor =
   | ImageSourceDescriptor
   | SyphonSourceDescriptor
   | VideoSourceDescriptor
-  | WebcamSourceDescriptor;
+  | WebcamSourceDescriptor
+  | ShaderSourceDescriptor;

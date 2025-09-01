@@ -253,12 +253,35 @@ export class Compositor {
     gl.enableVertexAttribArray(this.aUvLoc);
     gl.vertexAttribPointer(this.aUvLoc, 2, gl.FLOAT, false, 0, 0);
 
+    // Fallback 1x1 black texture if missing
+    const ensureTex = (tex: WebGLTexture | null): WebGLTexture => {
+      if (tex) return tex;
+      const t = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 255]),
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.texA);
+    gl.bindTexture(gl.TEXTURE_2D, ensureTex(this.texA));
     gl.uniform1i(this.uTexALoc, 0);
 
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.texB);
+    gl.bindTexture(gl.TEXTURE_2D, ensureTex(this.texB));
     gl.uniform1i(this.uTexBLoc, 1);
 
     gl.uniform1f(this.mixLocation, this._mix);

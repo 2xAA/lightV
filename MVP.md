@@ -80,16 +80,16 @@ Acceptance
 - [X] Implement `WebcamSource.ts` using `getUserMedia`; device selector; start/stop releases camera.
 
 Acceptance
-- [ ] Webcam appears as a source; switching away stops camera access.
+- [X] Webcam appears as a source; switching away stops camera access.
 
 ---
 
 ## Slice 9 — ShaderSource
-- [ ] Implement `ShaderSource.ts` for user frag shaders with common uniforms (`time`, `resolution`, `mix`, optional `audio` later).
-- [ ] Surface compile/link errors in UI.
+- [X] Implement `ShaderSource.ts` for user frag shaders with common uniforms (`time`, `resolution`, `mix`, optional `audio` later).
+- [X] Surface compile/link errors in UI.
 
 Acceptance
-- [ ] Example shader runs; errors shown clearly when invalid.
+- [X] Example shader runs; errors shown clearly when invalid.
 
 ---
 

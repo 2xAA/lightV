@@ -8,6 +8,7 @@ import { ImageSource } from "../app/sources/ImageSource";
 import { SyphonSource } from "../app/sources/SyphonSource";
 import { VideoSource } from "../app/sources/VideoSource";
 import { WebcamSource } from "../app/sources/WebcamSource";
+import { ShaderSource } from "../app/sources/ShaderSource";
 import type { SourceDescriptor } from "../app/sources/types";
 
 // register built-ins for now
@@ -35,6 +36,10 @@ registerSource(
 registerSource(
   "webcam",
   ({ id, label, options }) => new WebcamSource({ id, label, options }),
+);
+registerSource(
+  "shader",
+  ({ id, label, options }) => new ShaderSource({ id, label, options }),
 );
 
 export type DeckId = "A" | "B";
@@ -150,11 +155,23 @@ export const useVjStore = defineStore("vj", () => {
       if (sourceA.value) (sourceA.value as any).stop?.();
       sourceA.value = src;
       sourceA.value.load(gl);
+      if (canvasEl.value && (sourceA.value as any).setOutputSize) {
+        (sourceA.value as any).setOutputSize(
+          canvasEl.value.width,
+          canvasEl.value.height,
+        );
+      }
       sourceA.value.start();
     } else {
       if (sourceB.value) (sourceB.value as any).stop?.();
       sourceB.value = src;
       sourceB.value.load(gl);
+      if (canvasEl.value && (sourceB.value as any).setOutputSize) {
+        (sourceB.value as any).setOutputSize(
+          canvasEl.value.width,
+          canvasEl.value.height,
+        );
+      }
       sourceB.value.start();
     }
 
@@ -231,6 +248,19 @@ export const useVjStore = defineStore("vj", () => {
         c.start();
       }
       return c;
+    } else if (desc.type === "shader") {
+      const id = `sh-${Date.now()}`;
+      const s = new ShaderSource({
+        id,
+        label: desc.label,
+        options: {
+          frag: (desc as any).frag,
+          fillMode: desc.options?.fillMode,
+        },
+      });
+      s.load(gl);
+      if (canvas) s.setOutputSize(canvas.width, canvas.height);
+      return s;
     }
     return null;
   }
@@ -244,6 +274,8 @@ export const useVjStore = defineStore("vj", () => {
     if (slot.type === "video" && slot.saved && slot.saved.type === "video")
       return slot.saved;
     if (slot.type === "webcam" && slot.saved && slot.saved.type === "webcam")
+      return slot.saved;
+    if (slot.type === "shader" && slot.saved && slot.saved.type === "shader")
       return slot.saved;
     return null;
   }
@@ -416,6 +448,28 @@ export const useVjStore = defineStore("vj", () => {
     setSlotSource(side, index, c, label, "webcam", saved);
   }
 
+  async function loadShaderIntoSlot(
+    side: BankSide,
+    index: number,
+    frag?: string,
+    label = "Shader",
+  ): Promise<void> {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    if (!comp || !gl) return;
+    const id = `${side}-slot${index}-sh-${Date.now()}`;
+    const s = new ShaderSource({ id, label, options: { frag } });
+    s.load(gl);
+    if (canvasEl.value)
+      s.setOutputSize(canvasEl.value.width, canvasEl.value.height);
+    const saved: SourceDescriptor = {
+      type: "shader",
+      label,
+      frag: frag || "",
+    } as SourceDescriptor;
+    setSlotSource(side, index, s, label, "shader", saved);
+  }
+
   // Append helpers (ZOI growth)
   async function addImageToBank(side: BankSide, file: File): Promise<void> {
     const slots = getSlots(side);
@@ -446,6 +500,12 @@ export const useVjStore = defineStore("vj", () => {
     const slots = getSlots(side);
     const index = slots.length;
     await loadWebcamIntoSlot(side, index, deviceId);
+  }
+
+  async function addShaderToBank(side: BankSide, frag?: string): Promise<void> {
+    const slots = getSlots(side);
+    const index = slots.length;
+    await loadShaderIntoSlot(side, index, frag);
   }
 
   async function restoreSlotFromSaved(
@@ -610,10 +670,12 @@ export const useVjStore = defineStore("vj", () => {
     loadVideoIntoSlot,
     loadSyphonIntoSlot,
     loadWebcamIntoSlot,
+    loadShaderIntoSlot,
     addImageToBank,
     addSyphonToBank,
     addVideoToBank,
     addWebcamToBank,
+    addShaderToBank,
     setActiveFromSlot,
     instantiateFromDescriptor,
     exportDescriptorFromSlot,

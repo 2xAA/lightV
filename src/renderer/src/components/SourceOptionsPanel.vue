@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useVjStore, type BankSide } from "../stores/vj";
+import type { OptionField, ISource } from "../app/sources/ISource";
 
 const props = defineProps<{ side: BankSide }>();
 const store = useVjStore();
@@ -11,9 +12,14 @@ const selectedSlot = computed(() => {
   const slots = props.side === "left" ? store.leftSlots : store.rightSlots;
   return idx != null ? slots[idx] : null;
 });
-const source = computed(() => selectedSlot.value?.source ?? null);
-const fields = computed(() =>
+const source = computed<ISource | null>(
+  () => selectedSlot.value?.source ?? null,
+);
+const fields = computed<OptionField[]>(() =>
   source.value?.getOptionsSchema ? source.value.getOptionsSchema() : [],
+);
+const filteredFields = computed<OptionField[]>(() =>
+  fields.value.filter((f) => f.key !== "frag"),
 );
 
 function onChange(fieldKey: string, value: unknown): void {
@@ -43,11 +49,9 @@ async function refreshWebcamDevices(): Promise<void> {
 }
 
 watch(
-  () => (source.value ? (source.value as { type?: string }).type : null),
+  () => (source.value ? source.value.type : null),
   async (t) => {
-    if (t === "webcam") {
-      await refreshWebcamDevices();
-    }
+    if (t === "webcam") await refreshWebcamDevices();
   },
   { immediate: true },
 );
@@ -56,6 +60,33 @@ function onSelectWebcam(): void {
   if (source.value && source.value.setOptions && selectedDeviceId.value) {
     source.value.setOptions({ deviceId: selectedDeviceId.value });
   }
+}
+
+// Shader textarea
+const shaderText = ref<string>("");
+watch(
+  () => source.value,
+  (s) => {
+    if (s && s.type === "shader" && s.getOptionsSchema) {
+      const schema = s.getOptionsSchema();
+      const f = schema.find((x) => x.key === "frag");
+      shaderText.value = (f && (f.value as string)) || "";
+    } else {
+      shaderText.value = "";
+    }
+  },
+  { immediate: true },
+);
+let shaderDebounce: number | null = null;
+function onShaderInput(e: Event): void {
+  const value = (e.target as HTMLTextAreaElement).value;
+  shaderText.value = value;
+  if (shaderDebounce) cancelAnimationFrame(shaderDebounce);
+  shaderDebounce = requestAnimationFrame(() => {
+    if (source.value && source.value.setOptions) {
+      source.value.setOptions({ frag: shaderText.value });
+    }
+  });
 }
 </script>
 
@@ -79,10 +110,7 @@ function onSelectWebcam(): void {
       <div style="font-weight: 600">{{ selectedSlot?.label }}</div>
 
       <!-- Webcam-specific device dropdown -->
-      <div
-        v-if="(source as any).type === 'webcam'"
-        style="display: grid; gap: 4px"
-      >
+      <div v-if="source?.type === 'webcam'" style="display: grid; gap: 4px">
         <label style="font-size: 12px">Webcam device</label>
         <div style="display: flex; gap: 6px; align-items: center">
           <select v-model="selectedDeviceId" @change="onSelectWebcam">
@@ -98,8 +126,23 @@ function onSelectWebcam(): void {
         </div>
       </div>
 
+      <!-- Shader-specific textarea -->
+      <div v-if="source?.type === 'shader'" style="display: grid; gap: 4px">
+        <label style="font-size: 12px">Fragment shader</label>
+        <textarea
+          :value="shaderText"
+          rows="8"
+          style="width: 100%; font-family: monospace"
+          @input="onShaderInput"
+        ></textarea>
+      </div>
+
       <!-- Generic fields from schema (e.g., fill mode) -->
-      <div v-for="f in fields" :key="f.key" style="display: grid; gap: 4px">
+      <div
+        v-for="f in filteredFields"
+        :key="f.key"
+        style="display: grid; gap: 4px"
+      >
         <label style="font-size: 12px">{{ f.label }}</label>
         <template v-if="f.type === 'select'">
           <select
