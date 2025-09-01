@@ -1,105 +1,30 @@
 <script setup lang="ts">
+import { onMounted, onBeforeUnmount, ref } from "vue";
+import type { Bounds, Quad } from "../app/fabric-manager";
 import {
-  onMounted,
-  onBeforeUnmount,
-  reactive,
-  ref,
-  shallowRef,
-  markRaw,
-} from "vue";
-import type { Region, Bounds, Quad } from "../app/fabric-manager";
-import type { CanvasMode } from "../app/canvas2d-source";
-import type { FabricManager } from "../app/fabric-manager";
-import "../../color-average/styles.css";
-
-type Color = { r: number; g: number; b: number; hex: string };
-
-type RegionConfig = {
-  method?: "average" | "mode" | "maxluma";
-  count?: number;
-  rows?: number;
-  cols?: number;
-};
-
-type UiRegion = {
-  id: string;
-  type: string;
-  config: RegionConfig;
-  colors: Color[];
-};
-
-type AppApi = {
-  addRegion: (type: string, config?: RegionConfig) => void;
-  deleteRegion: (regionId: string) => void;
-  clearAllRegions: () => void;
-  setSamplesPerEdge: (n: number) => void;
-  setMode: (mode: CanvasMode) => void;
-  applyRegionConfig: (regionId: string, updated: RegionConfig) => void;
-  regions: Map<string, UiRegion>;
-  fabricManager: FabricManager | null;
-};
+  useColorAverageStore,
+  type UiRegion,
+  type Color,
+} from "../stores/colorAverage";
+import "../../../styles.css";
 
 const stageRef = ref<HTMLElement | null>(null);
 const backgroundCanvasRef = ref<HTMLCanvasElement | null>(null);
 const webglCanvasRef = ref<HTMLCanvasElement | null>(null);
 const fabricCanvasRef = ref<HTMLCanvasElement | null>(null);
 
-// Store external, non-reactive app instance to avoid Vue wrapping it in Proxy
-const appRef = shallowRef<AppApi | null>(null);
-
-// Controls state
-const controls = reactive({
-  stripCount: 3,
-  gridRows: 2,
-  gridCols: 3,
-  samplesPerEdge: 20,
-  mode: "quadrants" as CanvasMode,
-});
-
-// Regions state
-const regions = ref<UiRegion[]>([]);
-const selectedRegionId = ref<string | null>(null);
-const highlightedRowId = ref<string | null>(null);
-
-// Edit modal state
-const isEditOpen = ref(false);
-const editRegion = ref<UiRegion | null>(null);
-const editMethod = ref<NonNullable<RegionConfig["method"]>>("average");
-const editStripCount = ref(3);
-const editGridRows = ref(2);
-const editGridCols = ref(3);
+const store = useColorAverageStore();
 
 function openEditModal(region: UiRegion): void {
-  editRegion.value = region;
-  const method = (region.config && region.config.method) || "average";
-  editMethod.value = method as NonNullable<RegionConfig["method"]>;
-  if (region.type === "strip") {
-    editStripCount.value = region.config.count || controls.stripCount;
-  }
-  if (region.type === "grid") {
-    editGridRows.value = region.config.rows || controls.gridRows;
-    editGridCols.value = region.config.cols || controls.gridCols;
-  }
-  isEditOpen.value = true;
+  store.openEditModal(region);
 }
 
 function closeEditModal(): void {
-  isEditOpen.value = false;
-  editRegion.value = null;
+  store.closeEditModal();
 }
 
 function saveEditChanges(): void {
-  if (!appRef.value || !editRegion.value) return;
-  const region = editRegion.value;
-  const updated: RegionConfig = { method: editMethod.value };
-  if (region.type === "strip") {
-    updated.count = Math.max(2, Math.min(20, Math.floor(editStripCount.value)));
-  } else if (region.type === "grid") {
-    updated.rows = Math.max(2, Math.min(10, Math.floor(editGridRows.value)));
-    updated.cols = Math.max(2, Math.min(10, Math.floor(editGridCols.value)));
-  }
-  appRef.value.applyRegionConfig(region.id, updated);
-  isEditOpen.value = false;
+  store.saveEditChanges();
 }
 
 // Helpers for UI formatting
@@ -134,39 +59,17 @@ function hexText(colors: Color[]): string {
   return colors.map((c) => c.hex).join("\n");
 }
 
-// Actions
-function addArea(): void {
-  appRef.value?.addRegion("area");
-}
-function addStrip(): void {
-  appRef.value?.addRegion("strip", { count: controls.stripCount });
-}
-function addGrid(): void {
-  appRef.value?.addRegion("grid", {
-    rows: controls.gridRows,
-    cols: controls.gridCols,
-  });
-}
-function clearAll(): void {
-  appRef.value?.clearAllRegions();
-  regions.value = [];
-}
-function toggleMode(): void {
-  const modes: CanvasMode[] = ["quadrants", "gradient", "diagonal", "syphon"];
-  const idx = modes.indexOf(controls.mode);
-  controls.mode = modes[(idx + 1) % modes.length];
-  appRef.value?.setMode(controls.mode);
-}
 function onSamplesChange(): void {
-  appRef.value?.setSamplesPerEdge(controls.samplesPerEdge);
+  store.setSamplesPerEdge();
 }
+
 function onLogDebug(): void {
   console.group("Sampling Debug Info");
   const canvas = webglCanvasRef.value as HTMLCanvasElement | null;
   if (canvas) {
     console.log("WebGL canvas size:", canvas.width, canvas.height);
   }
-  const app = appRef.value;
+  const app = store.getApp();
   if (app) {
     for (const [regionId] of app.regions.entries()) {
       const bounds: Bounds[] =
@@ -197,62 +100,16 @@ function onLogDebug(): void {
 }
 
 onMounted(async () => {
-  const mod = await import("../app/main");
-  const app = await mod.initColorAveragingApp({
-    elements: {
-      stage: stageRef.value as HTMLElement,
-      backgroundCanvas: backgroundCanvasRef.value as HTMLCanvasElement,
-      webglCanvas: webglCanvasRef.value as HTMLCanvasElement,
-      fabricCanvas: fabricCanvasRef.value as HTMLCanvasElement,
-    },
-    on: {
-      regionAdded: (region: Region) => {
-        const ui: UiRegion = {
-          id: region.id,
-          type: region.type,
-          config: region.config as RegionConfig,
-          colors: region.colors as Color[],
-        };
-        regions.value = [...regions.value, ui];
-      },
-      regionUpdated: (region: Region) => {
-        const ui: UiRegion = {
-          id: region.id,
-          type: region.type,
-          config: region.config as RegionConfig,
-          colors: region.colors as Color[],
-        };
-        regions.value = regions.value.map((r) => (r.id === region.id ? ui : r));
-      },
-      regionColorsUpdated: (regionId: string, colors: Color[]) => {
-        regions.value = regions.value.map((r) =>
-          r.id === regionId ? { ...r, colors } : r,
-        );
-      },
-      regionRemoved: (regionId: string) => {
-        regions.value = regions.value.filter((r) => r.id !== regionId);
-      },
-      regionSelected: (regionId: string) => {
-        selectedRegionId.value = regionId;
-        highlightedRowId.value = regionId;
-        setTimeout(() => {
-          if (highlightedRowId.value === regionId)
-            highlightedRowId.value = null;
-        }, 2000);
-      },
-      error: (message: string) => {
-        console.error(message);
-      },
-    },
+  await store.init({
+    stage: stageRef.value as HTMLElement,
+    backgroundCanvas: backgroundCanvasRef.value as HTMLCanvasElement,
+    webglCanvas: webglCanvasRef.value as HTMLCanvasElement,
+    fabricCanvas: fabricCanvasRef.value as HTMLCanvasElement,
   });
-  // Mark the external object as raw so Vue won't proxy internal Fabric.js references
-  appRef.value = markRaw(app as unknown as AppApi);
-  // initialize samples
-  appRef.value.setSamplesPerEdge(controls.samplesPerEdge);
 });
 
 onBeforeUnmount(() => {
-  appRef.value = null;
+  store.resetApp();
 });
 </script>
 
@@ -310,9 +167,9 @@ onBeforeUnmount(() => {
       >
         <div>
           <h3 style="margin: 0 0 6px 0">Add Region</h3>
-          <button @click="addArea">Add Area</button>
-          <button @click="addStrip">Add Strip</button>
-          <button @click="addGrid">Add Grid</button>
+          <button @click="store.addArea">Add Area</button>
+          <button @click="store.addStrip">Add Strip</button>
+          <button @click="store.addGrid">Add Grid</button>
         </div>
 
         <div>
@@ -321,7 +178,7 @@ onBeforeUnmount(() => {
             <label for="strip-count">Strip Cells:</label>
             <input
               id="strip-count"
-              v-model.number="controls.stripCount"
+              v-model.number="store.controls.stripCount"
               type="number"
               min="2"
               max="20"
@@ -331,7 +188,7 @@ onBeforeUnmount(() => {
             <label for="grid-rows">Grid Rows:</label>
             <input
               id="grid-rows"
-              v-model.number="controls.gridRows"
+              v-model.number="store.controls.gridRows"
               type="number"
               min="2"
               max="10"
@@ -341,7 +198,7 @@ onBeforeUnmount(() => {
             <label for="grid-cols">Grid Columns:</label>
             <input
               id="grid-cols"
-              v-model.number="controls.gridCols"
+              v-model.number="store.controls.gridCols"
               type="number"
               min="2"
               max="10"
@@ -351,7 +208,7 @@ onBeforeUnmount(() => {
             <label for="samples-per-edge">Samples/edge:</label>
             <input
               id="samples-per-edge"
-              v-model.number="controls.samplesPerEdge"
+              v-model.number="store.controls.samplesPerEdge"
               type="number"
               min="1"
               max="64"
@@ -362,8 +219,8 @@ onBeforeUnmount(() => {
 
         <div>
           <h3 style="margin: 0 0 6px 0">Actions</h3>
-          <button @click="clearAll">Clear All</button>
-          <button @click="toggleMode">Toggle Background Mode</button>
+          <button @click="store.clearAll">Clear All</button>
+          <button @click="store.toggleMode">Toggle Background Mode</button>
           <button @click="onLogDebug">Log Debug Info</button>
         </div>
       </div>
@@ -389,9 +246,9 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr
-              v-for="region in regions"
+              v-for="region in store.regions"
               :key="region.id"
-              :class="{ highlighted: highlightedRowId === region.id }"
+              :class="{ highlighted: store.highlightedRowId === region.id }"
             >
               <td class="region-id">{{ region.id }}</td>
               <td class="region-type">
@@ -426,7 +283,7 @@ onBeforeUnmount(() => {
                 </button>
                 <button
                   class="btn btn-small btn-danger"
-                  @click="appRef?.deleteRegion(region.id)"
+                  @click="store.deleteRegion(region.id)"
                 >
                   Delete
                 </button>
@@ -434,14 +291,14 @@ onBeforeUnmount(() => {
             </tr>
           </tbody>
         </table>
-        <div v-show="regions.length === 0" id="empty-state">
+        <div v-show="store.regions.length === 0" id="empty-state">
           <p>No regions defined. Add a region to begin color analysis.</p>
         </div>
       </div>
 
       <!-- Simple Vue modal -->
       <div
-        v-if="isEditOpen"
+        v-if="store.isEditOpen"
         style="
           position: fixed;
           inset: 0;
@@ -472,8 +329,9 @@ onBeforeUnmount(() => {
             <h3 style="margin: 0">
               Edit
               {{
-                editRegion
-                  ? editRegion.type[0].toUpperCase() + editRegion.type.slice(1)
+                store.editRegion
+                  ? store.editRegion.type[0].toUpperCase() +
+                    store.editRegion.type.slice(1)
                   : ""
               }}
               Region
@@ -483,28 +341,28 @@ onBeforeUnmount(() => {
           <div style="display: grid; gap: 8px">
             <div class="input-row">
               <label for="modal-method">Sampling:</label>
-              <select id="modal-method" v-model="editMethod">
+              <select id="modal-method" v-model="store.editMethod">
                 <option value="average">Average</option>
                 <option value="mode">Mode (dominant)</option>
                 <option value="maxluma">Max luminance</option>
               </select>
             </div>
-            <div v-if="editRegion?.type === 'strip'" class="input-row">
+            <div v-if="store.editRegion?.type === 'strip'" class="input-row">
               <label for="modal-strip-count">Number of Cells:</label>
               <input
                 id="modal-strip-count"
-                v-model.number="editStripCount"
+                v-model.number="store.editStripCount"
                 type="number"
                 min="2"
                 max="20"
               />
             </div>
-            <template v-if="editRegion?.type === 'grid'">
+            <template v-if="store.editRegion?.type === 'grid'">
               <div class="input-row">
                 <label for="modal-grid-rows">Rows:</label>
                 <input
                   id="modal-grid-rows"
-                  v-model.number="editGridRows"
+                  v-model.number="store.editGridRows"
                   type="number"
                   min="2"
                   max="10"
@@ -514,7 +372,7 @@ onBeforeUnmount(() => {
                 <label for="modal-grid-cols">Columns:</label>
                 <input
                   id="modal-grid-cols"
-                  v-model.number="editGridCols"
+                  v-model.number="store.editGridCols"
                   type="number"
                   min="2"
                   max="10"
