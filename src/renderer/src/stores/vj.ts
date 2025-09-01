@@ -4,11 +4,16 @@ import { Compositor } from "../app/compositor";
 import type { ISource } from "../app/sources/ISource";
 import { registerSource, createSource } from "../app/sources/sourceRegistry";
 import { MockSource } from "../app/sources/MockSource";
+import { ImageSource } from "../app/sources/ImageSource";
 
 // register built-ins for now
 registerSource(
   "mock",
   ({ id, label, options }) => new MockSource({ id, label, options }),
+);
+registerSource(
+  "image",
+  ({ id, label, options }) => new ImageSource({ id, label, options }),
 );
 
 export type DeckId = "A" | "B";
@@ -55,6 +60,44 @@ export const useVjStore = defineStore("vj", () => {
     start();
   }
 
+  function setDeckSource(deck: DeckId, src: ISource): void {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    if (!comp || !gl) return;
+
+    if (deck === "A") {
+      // dispose previous
+      if (sourceA.value) sourceA.value.dispose(gl);
+      sourceA.value = src;
+      sourceA.value.load(gl);
+      sourceA.value.start();
+    } else {
+      if (sourceB.value) sourceB.value.dispose(gl);
+      sourceB.value = src;
+      sourceB.value.load(gl);
+      sourceB.value.start();
+    }
+
+    comp.setTextures(
+      sourceA.value?.getTexture(gl) ?? null,
+      sourceB.value?.getTexture(gl) ?? null,
+    );
+  }
+
+  async function loadImageIntoDeck(deck: DeckId, file: File): Promise<void> {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    const canvas = canvasEl.value;
+    if (!comp || !gl || !canvas) return;
+
+    const id = `${deck}-img-${Date.now()}`;
+    const img = new ImageSource({ id });
+    img.load(gl);
+    img.setOutputSize(canvas.width, canvas.height);
+    await img.setFile(file);
+    setDeckSource(deck, img);
+  }
+
   function start(): void {
     stop();
     const loop = (t: number) => {
@@ -91,5 +134,14 @@ export const useVjStore = defineStore("vj", () => {
     crossfade.value = Math.max(0, Math.min(1, v));
   }
 
-  return { crossfade, compositor, init, start, stop, setCrossfade };
+  return {
+    crossfade,
+    compositor,
+    init,
+    start,
+    stop,
+    setCrossfade,
+    loadImageIntoDeck,
+    setDeckSource,
+  };
 });

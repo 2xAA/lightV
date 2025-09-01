@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import ColorAverage from "./components/ColorAverage.vue";
 import CompositorCanvas from "./components/CompositorCanvas.vue";
 import Crossfader from "./components/Crossfader.vue";
+import AddImageSource from "./components/AddImageSource.vue";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 // let removeFrameListener: (() => void) | null = null
@@ -72,6 +73,7 @@ onBeforeUnmount(() => {
   <div style="padding: 12px; display: grid; gap: 12px">
     <div style="height: 320px; background: #000"><CompositorCanvas /></div>
     <Crossfader />
+    <AddImageSource />
   </div>
 
   <ColorAverage />

@@ -27,16 +27,16 @@ Acceptance
 - [X] Decks reference sources via id; hot-swap active source without recreating compositor.
 
 Acceptance
-- [ ] Can add a mock source to a slot and switch active source on a deck with no frame drops.
+- [X] Can add a mock source to a slot and switch active source on a deck with no frame drops.
 
 ---
 
 ## Slice 3 — ImageSource
-- [ ] Implement `ImageSource.ts`: file picker → `HTMLImageElement` → texture upload; fit/contain/cover.
-- [ ] Basic options: `fillMode`, `scale`, `position`.
+- [X] Implement `ImageSource.ts`: file picker → `HTMLImageElement` → texture upload; fit/contain/cover.
+- [X] Basic options: `fillMode`, `scale`, `position`.
 
 Acceptance
-- [ ] Load a local image; appears in the program output; respects fill mode and scale.
+- [X] Load a local image; appears in the program output; respects fill mode and scale.
 
 ---
 
