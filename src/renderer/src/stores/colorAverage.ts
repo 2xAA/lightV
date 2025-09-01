@@ -11,6 +11,8 @@ export type RegionConfig = {
   count?: number;
   rows?: number;
   cols?: number;
+  smoothingEnabled?: boolean;
+  smoothingMs?: number;
 };
 
 export type UiRegion = {
@@ -53,6 +55,8 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
   const editStripCount = ref(3);
   const editGridRows = ref(2);
   const editGridCols = ref(3);
+  const editSmoothingEnabled = ref(false);
+  const editSmoothingMs = ref(250);
 
   // External app instance (non-reactive internals)
   const app = shallowRef<AppApi | null>(null);
@@ -123,6 +127,8 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
       editGridRows.value = region.config.rows || controls.gridRows;
       editGridCols.value = region.config.cols || controls.gridCols;
     }
+    editSmoothingEnabled.value = !!region.config.smoothingEnabled;
+    editSmoothingMs.value = region.config.smoothingMs ?? 250;
     isEditOpen.value = true;
   }
 
@@ -134,7 +140,14 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
   function saveEditChanges(): void {
     if (!app.value || !editRegion.value) return;
     const region = editRegion.value;
-    const updated: RegionConfig = { method: editMethod.value };
+    const updated: RegionConfig = {
+      method: editMethod.value,
+      smoothingEnabled: editSmoothingEnabled.value,
+      smoothingMs: Math.max(
+        1,
+        Math.min(10000, Math.floor(editSmoothingMs.value)),
+      ),
+    };
     if (region.type === "strip") {
       updated.count = Math.max(
         2,
@@ -198,6 +211,8 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
     editStripCount,
     editGridRows,
     editGridCols,
+    editSmoothingEnabled,
+    editSmoothingMs,
     app,
     // actions
     init,

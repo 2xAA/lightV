@@ -33,6 +33,12 @@ class ColorAveragingApp {
   };
   _stageEl: HTMLElement | null;
 
+  // Smoothing controls
+  _smoothingEnabled: boolean;
+  _smoothingDurationMs: number;
+  _lastFrameTimeMs: number | null;
+  _lastFrameDtMs: number;
+
   constructor() {
     this.webglRenderer = null;
     this.fabricManager = null;
@@ -54,6 +60,12 @@ class ColorAveragingApp {
 
     this._events = {};
     this._stageEl = null;
+
+    // Smoothing defaults
+    this._smoothingEnabled = false;
+    this._smoothingDurationMs = 250;
+    this._lastFrameTimeMs = null;
+    this._lastFrameDtMs = 16;
   }
 
   async init(options?: {
@@ -105,6 +117,14 @@ class ColorAveragingApp {
 
       // Animation loop
       const loop = (t) => {
+        const nowMs = typeof t === "number" ? t : performance.now();
+        if (this._lastFrameTimeMs == null) {
+          this._lastFrameDtMs = 16;
+        } else {
+          this._lastFrameDtMs = Math.max(0, nowMs - this._lastFrameTimeMs);
+        }
+        this._lastFrameTimeMs = nowMs;
+
         const w = backgroundCanvas?.width ?? 0;
         const h = backgroundCanvas.height;
         if (w === this._lastSizeW && h === this._lastSizeH) {
@@ -227,6 +247,15 @@ class ColorAveragingApp {
     this._currentMode = mode;
   }
 
+  setSmoothingEnabled(enabled: boolean) {
+    this._smoothingEnabled = !!enabled;
+  }
+
+  setSmoothingDurationMs(durationMs: number) {
+    const clamped = Math.max(1, Math.min(10000, Math.floor(durationMs)));
+    this._smoothingDurationMs = clamped;
+  }
+
   addRegion(type, config = {}) {
     const regionId = `region_${this.nextRegionId++}`;
 
@@ -288,12 +317,51 @@ class ColorAveragingApp {
       return;
 
     const method = (region.config && region.config.method) || "average";
-    const colors =
+    const targetColors =
       this.webglRenderer?.calculateColors(bounds, quads, method) || [];
-    region.colors = colors;
+
+    // Apply per-region smoothing if enabled and lengths match
+    const smoothingEnabled = !!(
+      region.config && region.config.smoothingEnabled
+    );
+    const smoothingMs = Math.max(
+      0,
+      Math.floor(region.config?.smoothingMs ?? 0),
+    );
+    if (
+      smoothingEnabled &&
+      Array.isArray(region.colors) &&
+      region.colors.length === targetColors.length &&
+      smoothingMs > 0
+    ) {
+      const alpha = 1 - Math.exp(-this._lastFrameDtMs / smoothingMs);
+      const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+      const toHex = (n: number) => {
+        const v = Math.max(0, Math.min(255, Math.round(n)));
+        return v.toString(16).padStart(2, "0");
+      };
+      const smoothed = targetColors.map((tc, i) => {
+        const pc = region.colors[i];
+        const r = lerp(pc.r, tc.r, alpha);
+        const g = lerp(pc.g, tc.g, alpha);
+        const b = lerp(pc.b, tc.b, alpha);
+        const rr = Math.round(r);
+        const gg = Math.round(g);
+        const bb = Math.round(b);
+        return {
+          r: rr,
+          g: gg,
+          b: bb,
+          hex: `#${toHex(rr)}${toHex(gg)}${toHex(bb)}`,
+        };
+      });
+      region.colors = smoothed;
+    } else {
+      region.colors = targetColors;
+    }
 
     if (this._events.regionColorsUpdated)
-      this._events.regionColorsUpdated(regionId, colors);
+      this._events.regionColorsUpdated(regionId, region.colors);
   }
 
   recalculateColors() {
@@ -306,17 +374,31 @@ class ColorAveragingApp {
     const region = this.regions.get(regionId);
     if (!region) return;
 
-    // Update region configuration
+    // Merge region configuration
     const prevConfig = { ...region.config };
-    region.config = { ...updatedConfig };
+    const mergedConfig = { ...prevConfig, ...updatedConfig };
 
-    // If this is an 'area' and only the sampling method changed, avoid recreating to preserve transform
-    const onlyMethodChanged =
-      region.type === "area" &&
-      Object.keys({ ...prevConfig, method: undefined }).length === 0 &&
-      Object.keys({ ...updatedConfig, method: undefined }).length === 0 &&
-      prevConfig.method !== updatedConfig.method;
-    if (onlyMethodChanged) {
+    // Determine if structural (geometry-affecting) changes occurred
+    let structuralChanged = false;
+    if (region.type === "strip") {
+      structuralChanged =
+        (prevConfig.count ?? 3) !==
+        (mergedConfig.count ?? prevConfig.count ?? 3);
+    } else if (region.type === "grid") {
+      const prevRows = prevConfig.rows ?? 2;
+      const prevCols = prevConfig.cols ?? 3;
+      const nextRows = mergedConfig.rows ?? prevRows;
+      const nextCols = mergedConfig.cols ?? prevCols;
+      structuralChanged = prevRows !== nextRows || prevCols !== nextCols;
+    } else {
+      structuralChanged = false;
+    }
+
+    // Apply config
+    region.config = mergedConfig;
+
+    if (!structuralChanged) {
+      // Only sampling method or smoothing changed: no need to recreate objects
       this.updateRegionColors(regionId);
       if (this._events.regionUpdated) this._events.regionUpdated(region);
       return;

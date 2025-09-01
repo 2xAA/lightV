@@ -379,6 +379,24 @@ onBeforeUnmount(() => {
                 />
               </div>
             </template>
+            <div class="input-row">
+              <label for="modal-smoothing">Smooth colors:</label>
+              <input
+                id="modal-smoothing"
+                v-model="store.editSmoothingEnabled"
+                type="checkbox"
+              />
+            </div>
+            <div class="input-row">
+              <label for="modal-smoothing-ms">Smoothing time (ms):</label>
+              <input
+                id="modal-smoothing-ms"
+                v-model.number="store.editSmoothingMs"
+                type="number"
+                min="1"
+                max="10000"
+              />
+            </div>
           </div>
           <div
             style="
