@@ -27,7 +27,15 @@ export type VideoSourceDescriptor = {
   };
 };
 
+export type WebcamSourceDescriptor = {
+  type: "webcam";
+  label: string;
+  deviceId?: string;
+  options?: DescriptorOptionsBase;
+};
+
 export type SourceDescriptor =
   | ImageSourceDescriptor
   | SyphonSourceDescriptor
-  | VideoSourceDescriptor;
+  | VideoSourceDescriptor
+  | WebcamSourceDescriptor;

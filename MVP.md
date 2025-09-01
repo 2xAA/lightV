@@ -77,16 +77,12 @@ Acceptance
 ---
 
 ## Slice 8 — WebcamSource
-- [ ] Implement `WebcamSource.ts` using `getUserMedia`; device selector; start/stop releases camera.
+- [X] Implement `WebcamSource.ts` using `getUserMedia`; device selector; start/stop releases camera.
 
 Acceptance
 - [ ] Webcam appears as a source; switching away stops camera access.
 
 ---
-
-## Slice 8-B -- Crossfader Modes
-- [ ] Implement different crossfader curves like a dj mixer
-- [ ] Implement different colour mix modes
 
 ## Slice 9 — ShaderSource
 - [ ] Implement `ShaderSource.ts` for user frag shaders with common uniforms (`time`, `resolution`, `mix`, optional `audio` later).
@@ -97,7 +93,13 @@ Acceptance
 
 ---
 
-## Slice 10 — Transitions framework
+## Slice 10 -- Crossfader Modes
+- [ ] Implement different crossfader curves like a dj mixer
+- [ ] Implement different colour mix modes
+
+---
+
+## Slice 11 — Transitions framework
 - [ ] Extend compositor with pluggable transitions: `crossfade`, `add`, `multiply`, `wipe`, `luma`.
 - [ ] Small UI to choose transition and parameters.
 
@@ -106,7 +108,7 @@ Acceptance
 
 ---
 
-## Slice 11 — Persistence
+## Slice 12 — Persistence
 - [ ] Save/load bank layout and per‑slot options to localStorage (or JSON file via Electron IPC if needed).
 
 Acceptance
@@ -114,7 +116,7 @@ Acceptance
 
 ---
 
-## Slice 12 — Performance hardening
+## Slice 13 — Performance hardening
 - [ ] Texture pooling; reuse FBOs; handle WebGL context loss.
 - [ ] Cap video decode FPS and upload bandwidth; OffscreenCanvas where available.
 
@@ -123,7 +125,7 @@ Acceptance
 
 ---
 
-## Slice 13 — MIDI/Keyboard mapping (optional)
+## Slice 14 — MIDI/Keyboard mapping (optional)
 - [ ] Simple learn mode; map crossfader/slots to MIDI CC/notes; store mappings.
 
 Acceptance
@@ -131,7 +133,7 @@ Acceptance
 
 ---
 
-## Slice 14 — Testing / QA
+## Slice 15 — Testing / QA
 - [ ] Unit tests for store logic and source lifecycle; manual checklist across macOS.
 
 Acceptance

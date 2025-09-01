@@ -1,5 +1,4 @@
 import type { ISource } from "./ISource";
-import { SyphonSourceDescriptor } from "./types";
 
 export type FillMode = "cover" | "contain" | "stretch";
 
@@ -21,10 +20,11 @@ export class SyphonSource implements ISource {
     id,
     label,
     serverIndex,
-    options,
   }: {
     id: string;
-  } & SyphonSourceDescriptor) {
+    label?: string;
+    serverIndex: number;
+  }) {
     this.id = id;
     this.label = label || `Syphon ${id}`;
     this.texture = null;
@@ -35,7 +35,7 @@ export class SyphonSource implements ISource {
     this.gl = null;
     this.clientId = null;
     this.serverIndex = serverIndex ?? null;
-    this.fillMode = options?.fillMode ?? "cover";
+    this.fillMode = "cover";
   }
 
   getFlipY(): boolean {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { useVjStore, type BankSide } from "../stores/vj";
 
 const props = defineProps<{ side: BankSide }>();
@@ -19,6 +19,42 @@ const fields = computed(() =>
 function onChange(fieldKey: string, value: unknown): void {
   if (source.value && source.value.setOptions) {
     source.value.setOptions({ [fieldKey]: value });
+  }
+}
+
+// Webcam devices
+const webcamDevices = ref<Array<{ deviceId: string; label: string }>>([]);
+const selectedDeviceId = ref<string | null>(null);
+
+async function refreshWebcamDevices(): Promise<void> {
+  try {
+    const list = await navigator.mediaDevices.enumerateDevices();
+    const cams = list.filter((d) => d.kind === "videoinput");
+    webcamDevices.value = cams.map((d, i) => ({
+      deviceId: d.deviceId,
+      label: d.label || `Camera ${i + 1}`,
+    }));
+    if (!selectedDeviceId.value && webcamDevices.value.length > 0) {
+      selectedDeviceId.value = webcamDevices.value[0].deviceId;
+    }
+  } catch {
+    webcamDevices.value = [];
+  }
+}
+
+watch(
+  () => (source.value ? (source.value as { type?: string }).type : null),
+  async (t) => {
+    if (t === "webcam") {
+      await refreshWebcamDevices();
+    }
+  },
+  { immediate: true },
+);
+
+function onSelectWebcam(): void {
+  if (source.value && source.value.setOptions && selectedDeviceId.value) {
+    source.value.setOptions({ deviceId: selectedDeviceId.value });
   }
 }
 </script>
@@ -41,6 +77,28 @@ function onChange(fieldKey: string, value: unknown): void {
     </template>
     <template v-else>
       <div style="font-weight: 600">{{ selectedSlot?.label }}</div>
+
+      <!-- Webcam-specific device dropdown -->
+      <div
+        v-if="(source as any).type === 'webcam'"
+        style="display: grid; gap: 4px"
+      >
+        <label style="font-size: 12px">Webcam device</label>
+        <div style="display: flex; gap: 6px; align-items: center">
+          <select v-model="selectedDeviceId" @change="onSelectWebcam">
+            <option
+              v-for="d in webcamDevices"
+              :key="d.deviceId"
+              :value="d.deviceId"
+            >
+              {{ d.label }}
+            </option>
+          </select>
+          <button @click="refreshWebcamDevices">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Generic fields from schema (e.g., fill mode) -->
       <div v-for="f in fields" :key="f.key" style="display: grid; gap: 4px">
         <label style="font-size: 12px">{{ f.label }}</label>
         <template v-if="f.type === 'select'">

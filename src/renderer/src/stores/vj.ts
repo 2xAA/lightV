@@ -7,6 +7,7 @@ import { MockSource } from "../app/sources/MockSource";
 import { ImageSource } from "../app/sources/ImageSource";
 import { SyphonSource } from "../app/sources/SyphonSource";
 import { VideoSource } from "../app/sources/VideoSource";
+import { WebcamSource } from "../app/sources/WebcamSource";
 import type { SourceDescriptor } from "../app/sources/types";
 
 // register built-ins for now
@@ -31,6 +32,10 @@ registerSource(
   "video",
   ({ id, label, options }) => new VideoSource({ id, label, options }),
 );
+registerSource(
+  "webcam",
+  ({ id, label, options }) => new WebcamSource({ id, label, options }),
+);
 
 export type DeckId = "A" | "B";
 export type BankSide = "left" | "right";
@@ -49,6 +54,9 @@ export const useVjStore = defineStore("vj", () => {
   const canvasEl = ref<HTMLCanvasElement | null>(null);
   let rafId: number | null = null;
   let lastTime: number | null = null;
+
+  // global privacy: pause webcams that are not on A/B decks
+  const pauseInactiveWebcams = ref(true);
 
   // sources currently active on decks
   const sourceA = shallowRef<ISource | null>(null);
@@ -83,6 +91,23 @@ export const useVjStore = defineStore("vj", () => {
     if (idx == null) return null;
     const slots = getSlots(side);
     return slots[idx]?.source ?? null;
+  }
+
+  function enforceWebcamPolicy(): void {
+    if (!pauseInactiveWebcams.value) return;
+    const active = new Set<ISource | null>([sourceA.value, sourceB.value]);
+    const allSlots = [...leftSlots.value, ...rightSlots.value];
+    for (const s of allSlots) {
+      const src = s.source as any;
+      if (!src) continue;
+      if (src.type === "webcam") {
+        if (active.has(src)) {
+          if (typeof src.start === "function") src.start();
+        } else {
+          if (typeof src.stop === "function") src.stop();
+        }
+      }
+    }
   }
 
   function init(canvas: HTMLCanvasElement): void {
@@ -122,12 +147,12 @@ export const useVjStore = defineStore("vj", () => {
     if (!comp || !gl) return;
 
     if (deck === "A") {
-      if (sourceA.value) sourceA.value.dispose(gl);
+      if (sourceA.value) (sourceA.value as any).stop?.();
       sourceA.value = src;
       sourceA.value.load(gl);
       sourceA.value.start();
     } else {
-      if (sourceB.value) sourceB.value.dispose(gl);
+      if (sourceB.value) (sourceB.value as any).stop?.();
       sourceB.value = src;
       sourceB.value.load(gl);
       sourceB.value.start();
@@ -137,6 +162,7 @@ export const useVjStore = defineStore("vj", () => {
       sourceA.value?.getTexture(gl) ?? null,
       sourceB.value?.getTexture(gl) ?? null,
     );
+    enforceWebcamPolicy();
   }
 
   // Descriptor <-> ISource
@@ -186,6 +212,25 @@ export const useVjStore = defineStore("vj", () => {
       await v.setFile(file);
       v.start();
       return v;
+    } else if (desc.type === "webcam") {
+      const id = `cam-${Date.now()}`;
+      const c = new WebcamSource({
+        id,
+        label: desc.label,
+        options: {
+          deviceId: desc.deviceId,
+          fillMode: desc.options?.fillMode,
+        } as any,
+      });
+      c.load(gl);
+      if (canvas) {
+        c.setOutputSize(canvas.width, canvas.height);
+      }
+
+      if (!pauseInactiveWebcams.value) {
+        c.start();
+      }
+      return c;
     }
     return null;
   }
@@ -197,6 +242,8 @@ export const useVjStore = defineStore("vj", () => {
     if (slot.type === "image" && slot.saved && slot.saved.type === "image")
       return slot.saved;
     if (slot.type === "video" && slot.saved && slot.saved.type === "video")
+      return slot.saved;
+    if (slot.type === "webcam" && slot.saved && slot.saved.type === "webcam")
       return slot.saved;
     return null;
   }
@@ -240,6 +287,19 @@ export const useVjStore = defineStore("vj", () => {
     setDeckSource(deck, s);
   }
 
+  // async function loadWebcamIntoDeck(
+  //   deck: DeckId,
+  //   deviceId: string,
+  // ): Promise<void> {
+  //   const comp = compositor.value;
+  //   const gl = comp?.getGL();
+  //   if (!comp || !gl) return;
+  //   const id = `${deck}-webcam-${deviceId}-${Date.now()}`;
+  //   const c = new WebcamSource({ id, deviceId });
+  //   await c.load(gl);
+  //   setDeckSource(deck, c);
+  // }
+
   // Slot helpers (explicit index)
   function setSlotSource(
     side: BankSide,
@@ -254,10 +314,11 @@ export const useVjStore = defineStore("vj", () => {
     const gl = comp?.getGL();
     if (!gl) return;
     const prev = slots[index]?.source;
-    if (prev) prev.dispose(gl);
+    if (prev) (prev as any).stop?.();
     const id = slots[index]?.id ?? `${side.toUpperCase()}${index}`;
     slots[index] = { id, label, source: src, type, saved: saved ?? null };
     setSlots(side, slots);
+    enforceWebcamPolicy();
   }
 
   async function loadImageIntoSlot(
@@ -332,6 +393,29 @@ export const useVjStore = defineStore("vj", () => {
     setSlotSource(side, index, s, label, "syphon", saved);
   }
 
+  async function loadWebcamIntoSlot(
+    side: BankSide,
+    index: number,
+    deviceId?: string,
+    label = "Webcam",
+  ): Promise<void> {
+    const comp = compositor.value;
+    const gl = comp?.getGL();
+    if (!comp || !gl) return;
+    const id = `${side}-slot${index}-cam-${Date.now()}`;
+    const c = new WebcamSource({ id, label, options: { deviceId } });
+    c.load(gl);
+    if (canvasEl.value)
+      c.setOutputSize(canvasEl.value.width, canvasEl.value.height);
+    // Do not start here; webcams start only when active on a deck
+    const saved: SourceDescriptor = {
+      type: "webcam",
+      label,
+      deviceId,
+    } as SourceDescriptor;
+    setSlotSource(side, index, c, label, "webcam", saved);
+  }
+
   // Append helpers (ZOI growth)
   async function addImageToBank(side: BankSide, file: File): Promise<void> {
     const slots = getSlots(side);
@@ -353,6 +437,15 @@ export const useVjStore = defineStore("vj", () => {
     const slots = getSlots(side);
     const index = slots.length;
     await loadVideoIntoSlot(side, index, file);
+  }
+
+  async function addWebcamToBank(
+    side: BankSide,
+    deviceId?: string,
+  ): Promise<void> {
+    const slots = getSlots(side);
+    const index = slots.length;
+    await loadWebcamIntoSlot(side, index, deviceId);
   }
 
   async function restoreSlotFromSaved(
@@ -387,9 +480,10 @@ export const useVjStore = defineStore("vj", () => {
     const gl = comp?.getGL();
     const slots = getSlots(side).slice();
     const s = slots[index]?.source;
-    if (gl && s) s.dispose(gl);
+    if (gl && s) (s as any).stop?.();
     slots.splice(index, 1);
     setSlots(side, slots);
+    enforceWebcamPolicy();
   }
 
   function setActiveFromSlot(side: BankSide, index: number): void {
@@ -506,6 +600,7 @@ export const useVjStore = defineStore("vj", () => {
     start,
     stop,
     setCrossfade,
+    pauseInactiveWebcams,
     loadImageIntoDeck,
     loadSyphonIntoDeck,
     setDeckSource,
@@ -514,9 +609,11 @@ export const useVjStore = defineStore("vj", () => {
     loadImageIntoSlot,
     loadVideoIntoSlot,
     loadSyphonIntoSlot,
+    loadWebcamIntoSlot,
     addImageToBank,
     addSyphonToBank,
     addVideoToBank,
+    addWebcamToBank,
     setActiveFromSlot,
     instantiateFromDescriptor,
     exportDescriptorFromSlot,
