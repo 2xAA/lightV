@@ -22,9 +22,9 @@ Acceptance
 ---
 
 ## Slice 2 — Source abstraction + registry
-- [ ] Define `app/sources/ISource.ts` with lifecycle: `load`, `start`, `stop`, `dispose`; rendering: `getTexture(gl)`, `getThumbnail()`; options: `getOptionsSchema`, `setOptions`.
-- [ ] Implement `app/sources/sourceRegistry.ts` to create and manage sources by type and id.
-- [ ] Decks reference sources via id; hot-swap active source without recreating compositor.
+- [X] Define `app/sources/ISource.ts` with lifecycle: `load`, `start`, `stop`, `dispose`; rendering: `getTexture(gl)`, `getThumbnail()`; options: `getOptionsSchema`, `setOptions`.
+- [X] Implement `app/sources/sourceRegistry.ts` to create and manage sources by type and id.
+- [X] Decks reference sources via id; hot-swap active source without recreating compositor.
 
 Acceptance
 - [ ] Can add a mock source to a slot and switch active source on a deck with no frame drops.

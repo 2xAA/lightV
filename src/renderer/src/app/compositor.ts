@@ -188,6 +188,16 @@ export class Compositor {
     this._mix = Math.max(0, Math.min(1, Number(v) || 0));
   }
 
+  setTextures(texA: WebGLTexture | null, texB: WebGLTexture | null): void {
+    if (!this.gl) return;
+    if (texA) this.texA = texA;
+    if (texB) this.texB = texB;
+  }
+
+  getGL(): WebGL2RenderingContext | null {
+    return this.gl;
+  }
+
   render(): void {
     const gl = this.gl;
     if (!gl || !this.program) return;
