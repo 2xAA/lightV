@@ -22,6 +22,23 @@ export class Compositor {
   uTParamsLoc: WebGLUniformLocation | null;
   _transition: number;
   _tParams: [number, number, number, number];
+  // Offscreen composite target
+  outputFbo: WebGLFramebuffer | null;
+  outputTex: WebGLTexture | null;
+  // Copy-to-screen program
+  copyProgram: WebGLProgram | null;
+  copyPosLoc: number;
+  copyUvLoc: number;
+  uCopySrcLoc: WebGLUniformLocation | null;
+  // Averaging pass
+  avgProgram: WebGLProgram | null;
+  uAvgSrcLoc: WebGLUniformLocation | null;
+  uAvgRegionsLoc: WebGLUniformLocation | null;
+  uAvgCountLoc: WebGLUniformLocation | null;
+  uAvgCanvasSizeLoc: WebGLUniformLocation | null;
+  uAvgSamplesLoc: WebGLUniformLocation | null;
+  avgFbo: WebGLFramebuffer | null;
+  avgTex: WebGLTexture | null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -47,6 +64,20 @@ export class Compositor {
     this.uTParamsLoc = null;
     this._transition = 0;
     this._tParams = [0, 0, 0, 0];
+    this.outputFbo = null;
+    this.outputTex = null;
+    this.copyProgram = null;
+    this.copyPosLoc = -1;
+    this.copyUvLoc = -1;
+    this.uCopySrcLoc = null;
+    this.avgProgram = null;
+    this.uAvgSrcLoc = null;
+    this.uAvgRegionsLoc = null;
+    this.uAvgCountLoc = null;
+    this.uAvgCanvasSizeLoc = null;
+    this.uAvgSamplesLoc = null;
+    this.avgFbo = null;
+    this.avgTex = null;
   }
 
   init(): void {
@@ -164,6 +195,11 @@ export class Compositor {
     this.texA = this._createSolidTexture(255, 0, 255, 255);
     this.texB = this._createSolidTexture(0, 255, 255, 255);
 
+    // Offscreen output target
+    this._initOutputTarget();
+    this._initCopyProgram();
+    this._initAvgProgram();
+
     this.resize(
       this.canvas.clientWidth || 640,
       this.canvas.clientHeight || 360,
@@ -211,6 +247,135 @@ export class Compositor {
     return tex;
   }
 
+  _initOutputTarget(): void {
+    const gl = this.gl!;
+    this.outputTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.outputTex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      Math.max(1, this.canvas.width),
+      Math.max(1, this.canvas.height),
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    this.outputFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.outputFbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      this.outputTex,
+      0,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  _initCopyProgram(): void {
+    const gl = this.gl!;
+    const vs = `#version 300 es
+      in vec2 a_position; in vec2 a_texCoord; out vec2 v_uv;
+      void main(){ gl_Position=vec4(a_position,0.0,1.0); v_uv=a_texCoord; }`;
+    const fs = `#version 300 es
+      precision highp float; in vec2 v_uv; out vec4 fragColor; uniform sampler2D u_src;
+      void main(){ fragColor = texture(u_src, v_uv); }`;
+    const prog = gl.createProgram();
+    if (!prog) throw new Error("Failed to create copy program");
+    gl.attachShader(prog, this._createShader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, this._createShader(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error(`Copy link error: ${gl.getProgramInfoLog(prog)}`);
+    this.copyProgram = prog;
+    this.copyPosLoc = gl.getAttribLocation(prog, "a_position");
+    this.copyUvLoc = gl.getAttribLocation(prog, "a_texCoord");
+    this.uCopySrcLoc = gl.getUniformLocation(prog, "u_src");
+  }
+
+  _initAvgProgram(): void {
+    const gl = this.gl!;
+    const vs = `#version 300 es
+      in vec2 a_position; in vec2 a_texCoord; out vec2 v_uv;
+      void main(){ gl_Position=vec4(a_position,0.0,1.0); v_uv=a_texCoord; }`;
+    const fs = `#version 300 es
+      precision highp float; in vec2 v_uv; out vec4 fragColor;
+      uniform sampler2D u_src; // composited output
+      uniform int u_count; // number of regions
+      uniform vec4 u_regions[32]; // x,y,w,h normalized
+      uniform vec2 u_canvasSize; // pixel size of output
+      uniform int u_samples; // samples per edge
+      vec3 sampleAverage(int idx){
+        vec4 r = u_regions[idx];
+        float n = float(max(u_samples,1));
+        float step = 1.0 / n;
+        float start = step * 0.5;
+        vec3 total=vec3(0.0);
+        float cnt=0.0;
+        for(float sx=start;sx<1.0;sx+=step){
+          for(float sy=start;sy<1.0;sy+=step){
+            vec2 uv = vec2(r.x + sx*r.z, r.y + sy*r.w);
+            total += texture(u_src, uv).rgb; cnt+=1.0;
+          }
+        }
+        return total / max(cnt,1.0);
+      }
+      void main(){
+        int idx = int(floor(v_uv.x * float(u_count)));
+        idx = clamp(idx, 0, u_count-1);
+        vec3 c = sampleAverage(idx);
+        fragColor = vec4(c,1.0);
+      }`;
+    const prog = gl.createProgram();
+    if (!prog) throw new Error("Failed to create avg program");
+    gl.attachShader(prog, this._createShader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, this._createShader(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error(`Avg link error: ${gl.getProgramInfoLog(prog)}`);
+    this.avgProgram = prog;
+    this.uAvgSrcLoc = gl.getUniformLocation(prog, "u_src");
+    this.uAvgRegionsLoc = gl.getUniformLocation(prog, "u_regions");
+    this.uAvgCountLoc = gl.getUniformLocation(prog, "u_count");
+    this.uAvgCanvasSizeLoc = gl.getUniformLocation(prog, "u_canvasSize");
+    this.uAvgSamplesLoc = gl.getUniformLocation(prog, "u_samples");
+
+    this.avgFbo = gl.createFramebuffer();
+    this.avgTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.avgTex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      32,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.avgFbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      this.avgTex,
+      0,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   setSourceColors(
     a: [number, number, number],
     b: [number, number, number],
@@ -249,6 +414,21 @@ export class Compositor {
       this.canvas.height = h;
     }
     gl.viewport(0, 0, w, h);
+    // Resize output target
+    if (this.outputTex) {
+      gl.bindTexture(gl.TEXTURE_2D, this.outputTex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        w,
+        h,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null,
+      );
+    }
   }
 
   setMix(v: number): void {
@@ -303,8 +483,10 @@ export class Compositor {
 
   render(): void {
     const gl = this.gl;
-    if (!gl || !this.program) return;
+    if (!gl || !this.program || !this.copyProgram) return;
 
+    // First render mix into offscreen output
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.outputFbo);
     gl.useProgram(this.program);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -358,5 +540,88 @@ export class Compositor {
     );
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // Blit to default framebuffer using copyProgram
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.useProgram(this.copyProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    gl.enableVertexAttribArray(this.copyPosLoc);
+    gl.vertexAttribPointer(this.copyPosLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+    gl.enableVertexAttribArray(this.copyUvLoc);
+    gl.vertexAttribPointer(this.copyUvLoc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.outputTex);
+    gl.uniform1i(this.uCopySrcLoc, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  calculateAverageColors(
+    bounds: Array<{ x: number; y: number; width: number; height: number }>,
+    samplesPerEdge = 20,
+  ): Array<{ r: number; g: number; b: number; hex: string }> {
+    const gl = this.gl;
+    if (!gl || !this.avgProgram || !this.avgFbo || !this.avgTex) return [];
+    const count = Math.max(0, Math.min(32, bounds.length));
+    if (count === 0) return [];
+
+    const w = Math.max(1, this.canvas.width);
+    const h = Math.max(1, this.canvas.height);
+
+    const data = new Float32Array(32 * 4);
+    for (let i = 0; i < count; i++) {
+      const b = bounds[i];
+      data[i * 4 + 0] = b.x / w;
+      data[i * 4 + 1] = b.y / h;
+      data[i * 4 + 2] = b.width / w;
+      data[i * 4 + 3] = b.height / h;
+    }
+
+    gl.useProgram(this.avgProgram);
+
+    // full-screen quad
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+    const posLoc = gl.getAttribLocation(this.avgProgram, "a_position");
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+    const uvLoc = gl.getAttribLocation(this.avgProgram, "a_texCoord");
+    gl.enableVertexAttribArray(uvLoc);
+    gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // Source is composited output texture
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.outputTex);
+    gl.uniform1i(this.uAvgSrcLoc, 0);
+
+    gl.uniform1i(this.uAvgCountLoc, count);
+    gl.uniform4fv(this.uAvgRegionsLoc, data);
+    gl.uniform2f(this.uAvgCanvasSizeLoc, w, h);
+    gl.uniform1i(
+      this.uAvgSamplesLoc,
+      Math.max(1, Math.min(64, samplesPerEdge)),
+    );
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.avgFbo);
+    gl.viewport(0, 0, count, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    const pixels = new Uint8Array(count * 4);
+    gl.readPixels(0, 0, count, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+    const colors: Array<{ r: number; g: number; b: number; hex: string }> = [];
+    for (let i = 0; i < count; i++) {
+      const r = pixels[i * 4 + 0];
+      const g = pixels[i * 4 + 1];
+      const b = pixels[i * 4 + 2];
+      const toHex = (n: number) => n.toString(16).padStart(2, "0");
+      colors.push({ r, g, b, hex: `#${toHex(r)}${toHex(g)}${toHex(b)}` });
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+    return colors;
   }
 }

@@ -3,6 +3,7 @@ import { markRaw, reactive, ref, shallowRef } from "vue";
 import type { Region, FabricManager } from "../app/fabric-manager";
 import type { CanvasMode } from "../app/canvas2d-source";
 import { initColorAveragingApp } from "../app/main";
+import type { ColorAveragingApp } from "../app/main";
 
 export type Color = { r: number; g: number; b: number; hex: string };
 
@@ -31,6 +32,14 @@ export type AppApi = {
   applyRegionConfig: (regionId: string, updated: RegionConfig) => void;
   regions: Map<string, UiRegion>;
   fabricManager: FabricManager | null;
+  setCompositorGetter: (
+    getter: () => {
+      calculateAverageColors: (
+        bounds: { x: number; y: number; width: number; height: number }[],
+        samples?: number,
+      ) => Color[];
+    } | null,
+  ) => void;
 };
 
 export const useColorAverageStore = defineStore("colorAverage", () => {
@@ -60,6 +69,15 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
 
   // External app instance (non-reactive internals)
   const app = shallowRef<AppApi | null>(null);
+  const compositorGetter = shallowRef<
+    | null
+    | (() => {
+        calculateAverageColors: (
+          bounds: { x: number; y: number; width: number; height: number }[],
+          samples?: number,
+        ) => Color[];
+      })
+  >(null);
 
   async function init(elements: {
     stage: HTMLElement;
@@ -67,6 +85,10 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
     webglCanvas: HTMLCanvasElement;
     fabricCanvas: HTMLCanvasElement;
   }): Promise<void> {
+    if (app.value) {
+      // Already initialized; ignore subsequent init calls
+      return;
+    }
     const appInstance = await initColorAveragingApp({
       elements,
       on: {
@@ -113,6 +135,9 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
     });
 
     app.value = markRaw(appInstance as unknown as AppApi);
+    if (compositorGetter.value) {
+      app.value.setCompositorGetter(compositorGetter.value as any);
+    }
     app.value.setSamplesPerEdge(controls.samplesPerEdge);
   }
 
@@ -195,6 +220,20 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
     return app.value;
   }
 
+  function attachCompositorGetter(
+    getter: () => {
+      calculateAverageColors: (
+        bounds: { x: number; y: number; width: number; height: number }[],
+        samples?: number,
+      ) => Color[];
+    } | null,
+  ): void {
+    compositorGetter.value = getter as any;
+    if (app.value && app.value.setCompositorGetter) {
+      app.value.setCompositorGetter(getter as any);
+    }
+  }
+
   function resetApp(): void {
     app.value = null;
   }
@@ -227,6 +266,7 @@ export const useColorAverageStore = defineStore("colorAverage", () => {
     toggleMode,
     setSamplesPerEdge,
     getApp,
+    attachCompositorGetter,
     resetApp,
   };
 });

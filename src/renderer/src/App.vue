@@ -1,19 +1,31 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import ColorAverage from "./components/ColorAverage.vue";
+import ColorAverageControls from "./components/ColorAverageControls.vue";
+import ColorAverageTable from "./components/ColorAverageTable.vue";
 import CompositorCanvas from "./components/CompositorCanvas.vue";
 import Crossfader from "./components/Crossfader.vue";
-import AddImageSource from "./components/AddImageSource.vue";
-import AddSyphonSource from "./components/AddSyphonSource.vue";
+// import AddImageSource from "./components/AddImageSource.vue";
+// import AddSyphonSource from "./components/AddSyphonSource.vue";
 import Bank from "./components/Bank.vue";
 import SourceOptionsPanel from "./components/SourceOptionsPanel.vue";
+import { useColorAverageStore } from "./stores/colorAverage";
+import { useVjStore } from "./stores/vj";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-// let removeFrameListener: (() => void) | null = null
 let removeServersListener: (() => void) | null = null;
 
 const servers = ref<Array<{ index: number; name: string }>>([]);
 const selectedIndex = ref<number | null>(null);
+
+const colorStore = useColorAverageStore();
+const vj = useVjStore();
+
+function onMixerReady(canvas: HTMLCanvasElement): void {
+  canvasRef.value = canvas;
+  // Register compositor getter for single-context averaging
+  colorStore.attachCompositorGetter(() => vj.compositor);
+}
 
 onMounted(() => {
   // Start Syphon discovery
@@ -30,22 +42,6 @@ onMounted(() => {
   if (selectedIndex.value == null && servers.value.length > 0) {
     selectedIndex.value = servers.value[servers.value.length - 1].index;
   }
-
-  const canvas = canvasRef.value;
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  // removeFrameListener = window.syphon.onFrame(({ buffer, width, height }) => {
-  //   if (canvas.width !== width) canvas.width = width
-  //   if (canvas.height !== height) canvas.height = height
-
-  //   // Create a fresh Uint8ClampedArray to satisfy DOM types
-  //   const clamped = new Uint8ClampedArray(buffer.length)
-  //   clamped.set(buffer)
-  //   const imageData = new ImageData(clamped, width, height)
-  //   ctx.putImageData(imageData, 0, 0)
-  // })
 });
 
 watch(selectedIndex, (idx) => {
@@ -55,55 +51,58 @@ watch(selectedIndex, (idx) => {
 });
 
 onBeforeUnmount(() => {
-  // if (removeFrameListener) removeFrameListener()
   if (removeServersListener) removeServersListener();
   window.syphon.stop();
 });
 </script>
 
 <template>
-  <div style="padding: 12px; display: flex; gap: 16px; align-items: center">
-    <label>
-      Syphon server:
-      <select v-model.number="selectedIndex">
-        <option v-for="s in servers" :key="s.index" :value="s.index">
-          {{ s.name }}
-        </option>
-      </select>
-    </label>
-  </div>
+  <r-grid columns="12" gap="12" style="padding: 12px">
+    <r-cell span="12" style="display: flex; gap: 16px; align-items: center">
+      <label>
+        Syphon server:
+        <select v-model.number="selectedIndex">
+          <option v-for="s in servers" :key="s.index" :value="s.index">
+            {{ s.name }}
+          </option>
+        </select>
+      </label>
+    </r-cell>
+  </r-grid>
 
-  <div style="padding: 12px; display: grid; gap: 12px">
-    <div
-      style="
-        display: grid;
-        grid-template-columns: 240px 1fr 240px;
-        gap: 12px;
-        align-items: start;
-      "
-    >
+  <r-grid columns="12" gap="12" style="padding: 12px">
+    <r-cell span="3" sm="12">
       <SourceOptionsPanel side="left" />
+    </r-cell>
+    <r-cell span="6" sm="12">
       <div style="display: grid; gap: 12px">
-        <div style="height: 320px; background: #000"><CompositorCanvas /></div>
+        <div style="position: relative; height: 320px; background: #000">
+          <CompositorCanvas @ready="onMixerReady" />
+          <ColorAverage overlay />
+        </div>
         <Crossfader />
-        <AddImageSource />
-        <AddSyphonSource />
       </div>
+    </r-cell>
+    <r-cell span="3" sm="12">
       <SourceOptionsPanel side="right" />
-    </div>
-  </div>
+    </r-cell>
+  </r-grid>
 
-  <div
-    style="
-      padding: 12px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    "
-  >
-    <Bank side="left" />
-    <Bank side="right" />
-  </div>
+  <r-grid columns="12" gap="12" style="padding: 12px">
+    <r-cell span="6" sm="12">
+      <Bank side="left" />
+    </r-cell>
+    <r-cell span="6" sm="12">
+      <Bank side="right" />
+    </r-cell>
+  </r-grid>
 
-  <ColorAverage />
+  <r-grid columns="12" gap="12" style="padding: 12px">
+    <r-cell span="8" sm="12">
+      <ColorAverageTable />
+    </r-cell>
+    <r-cell span="4" sm="12">
+      <ColorAverageControls />
+    </r-cell>
+  </r-grid>
 </template>

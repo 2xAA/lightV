@@ -39,6 +39,18 @@ class ColorAveragingApp {
   _lastFrameTimeMs: number | null;
   _lastFrameDtMs: number;
 
+  // External compositor hook
+  _getCompositor:
+    | (() => {
+        calculateAverageColors: (
+          bounds: { x: number; y: number; width: number; height: number }[],
+          samples?: number,
+        ) => { r: number; g: number; b: number; hex: string }[];
+      } | null)
+    | null;
+  _samplesPerEdge: number;
+  _lockPixelSize: boolean;
+
   constructor() {
     this.webglRenderer = null;
     this.fabricManager = null;
@@ -66,6 +78,10 @@ class ColorAveragingApp {
     this._smoothingDurationMs = 250;
     this._lastFrameTimeMs = null;
     this._lastFrameDtMs = 16;
+
+    this._getCompositor = null;
+    this._samplesPerEdge = 20;
+    this._lockPixelSize = false;
   }
 
   async init(options?: {
@@ -175,10 +191,10 @@ class ColorAveragingApp {
       this._raf = requestAnimationFrame(loop);
 
       // Add a default region to demonstrate functionality
-      setTimeout(() => {
-        this.addRegion("area");
-        this.fabricManager?.refreshCanvas();
-      }, 500);
+      // setTimeout(() => {
+      //   this.addRegion("area");
+      //   this.fabricManager?.refreshCanvas();
+      // }, 500);
 
       console.log("Color Averaging App initialized successfully");
     } catch (error) {
@@ -189,6 +205,17 @@ class ColorAveragingApp {
     }
   }
 
+  setCompositorGetter(
+    getter: () => {
+      calculateAverageColors: (
+        bounds: { x: number; y: number; width: number; height: number }[],
+        samples?: number,
+      ) => { r: number; g: number; b: number; hex: string }[];
+    } | null,
+  ) {
+    this._getCompositor = getter;
+  }
+
   setupResizeSync() {
     const stage = this._stageEl;
     const backgroundCanvas = (this.canvas2dSource as any)
@@ -197,10 +224,11 @@ class ColorAveragingApp {
 
     // Observe container size; queue backstore size from its CSS box times DPR
     const queueFromStage = () => {
+      if (this._lockPixelSize) return;
       const rect = stage.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      this._pendingPixelW = Math.max(1, Math.floor(rect.width * dpr));
-      this._pendingPixelH = Math.max(1, Math.floor(rect.height * dpr));
+      // Use CSS pixels; when locked, we preserve explicit target size
+      this._pendingPixelW = Math.max(1, Math.floor(rect.width));
+      this._pendingPixelH = Math.max(1, Math.floor(rect.height));
     };
 
     queueFromStage();
@@ -223,6 +251,25 @@ class ColorAveragingApp {
     window.addEventListener("resize", onWindowResize);
   }
 
+  // Explicitly set pixel backstore size to align with external target (e.g., compositor canvas)
+  setTargetPixelSize(width: number, height: number) {
+    this._lockPixelSize = true;
+    const w = Math.max(1, Math.floor(width));
+    const h = Math.max(1, Math.floor(height));
+    const lastW = this._appliedPixelW || w;
+    const lastH = this._appliedPixelH || h;
+    const sx = lastW > 0 ? w / lastW : 1;
+    const sy = lastH > 0 ? h / lastH : 1;
+    this.canvas2dSource?.resize(w, h);
+    this.webglRenderer?.resize(w, h);
+    this.fabricManager?.resize(w, h);
+    this.fabricManager?.scaleContent(sx, sy);
+    this._appliedPixelW = w;
+    this._appliedPixelH = h;
+    this._pendingPixelW = w;
+    this._pendingPixelH = h;
+  }
+
   wireFabricEvents() {
     // Fabric.js events
     if (this.fabricManager) {
@@ -240,6 +287,7 @@ class ColorAveragingApp {
 
   setSamplesPerEdge(n: number) {
     this.webglRenderer?.setSamplesPerEdge(n);
+    this._samplesPerEdge = Math.max(1, Math.min(64, Math.floor(n)));
     this.recalculateColors();
   }
 
@@ -311,14 +359,31 @@ class ColorAveragingApp {
     const region = this.regions.get(regionId);
     if (!region) return;
 
-    const bounds = this.fabricManager?.getRegionBounds(regionId);
-    const quads = this.fabricManager?.getRegionQuads(regionId);
+    const bounds = this.fabricManager?.getRegionBounds(regionId) || [];
+    const quads = this.fabricManager?.getRegionQuads(regionId) || [];
     if ((!bounds || bounds.length === 0) && (!quads || quads.length === 0))
       return;
 
     const method = (region.config && region.config.method) || "average";
-    const targetColors =
-      this.webglRenderer?.calculateColors(bounds, quads, method) || [];
+
+    // Prefer compositor if available (single WebGL context)
+    const getComp = this._getCompositor;
+    let targetColors: any[] | null = null;
+    if (getComp) {
+      const comp = getComp();
+      if (comp && typeof comp.calculateAverageColors === "function") {
+        targetColors = comp.calculateAverageColors(
+          bounds,
+          this._samplesPerEdge,
+        ) as any[];
+      }
+    }
+
+    if (!targetColors) {
+      // Fallback to local renderer
+      targetColors =
+        this.webglRenderer?.calculateColors(bounds, quads, method) || [];
+    }
 
     // Apply per-region smoothing if enabled and lengths match
     const smoothingEnabled = !!(
@@ -451,3 +516,5 @@ export async function initColorAveragingApp(options?: {
   window.colorApp = app;
   return app;
 }
+
+export type { ColorAveragingApp };
