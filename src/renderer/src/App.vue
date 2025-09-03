@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
-import ColorAverage from "./components/ColorAverage.vue";
-import ColorAverageControls from "./components/ColorAverageControls.vue";
-import ColorAverageTable from "./components/ColorAverageTable.vue";
-import CompositorCanvas from "./components/CompositorCanvas.vue";
-import Crossfader from "./components/Crossfader.vue";
-// import AddImageSource from "./components/AddImageSource.vue";
-// import AddSyphonSource from "./components/AddSyphonSource.vue";
-import Bank from "./components/Bank.vue";
-import SourceOptionsPanel from "./components/SourceOptionsPanel.vue";
-import { useColorAverageStore } from "./stores/colorAverage";
-import { useVjStore } from "./stores/vj";
+import {
+  ColorAverage,
+  ColorAverageControls,
+  ColorAverageTable,
+  useColorAverageStore,
+} from "@/features/color-analysis";
+import {
+  useVjStore,
+  SourceOptionsPanel,
+  CompositorCanvas,
+  Crossfader,
+  Bank,
+} from "@/features/vj";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let removeServersListener: (() => void) | null = null;
@@ -57,19 +59,6 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <r-grid columns="12" gap="12" style="padding: 12px">
-    <r-cell span="12" style="display: flex; gap: 16px; align-items: center">
-      <label>
-        Syphon server:
-        <select v-model.number="selectedIndex">
-          <option v-for="s in servers" :key="s.index" :value="s.index">
-            {{ s.name }}
-          </option>
-        </select>
-      </label>
-    </r-cell>
-  </r-grid>
-
   <r-grid columns="12" gap="12" style="padding: 12px">
     <r-cell span="3" sm="12">
       <SourceOptionsPanel side="left" />

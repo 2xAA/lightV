@@ -13,6 +13,11 @@ export default defineConfig({
     resolve: {
       alias: {
         "@renderer": resolve("src/renderer/src"),
+        "@": resolve("src/renderer/src"),
+        "@/shared": resolve("src/renderer/src/shared"),
+        "@/entities": resolve("src/renderer/src/entities"),
+        "@/features": resolve("src/renderer/src/features"),
+        "@/app": resolve("src/renderer/src/app"),
       },
     },
     plugins: [

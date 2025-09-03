@@ -12,6 +12,21 @@
     "paths": {
       "@renderer/*": [
         "src/renderer/src/*"
+      ],
+      "@/*": [
+        "src/renderer/src/*"
+      ],
+      "@/shared/*": [
+        "src/renderer/src/shared/*"
+      ],
+      "@/entities/*": [
+        "src/renderer/src/entities/*"
+      ],
+      "@/features/*": [
+        "src/renderer/src/features/*"
+      ],
+      "@/app/*": [
+        "src/renderer/src/app/*"
       ]
     }
   }

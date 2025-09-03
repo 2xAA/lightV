@@ -29,6 +29,7 @@ let latestFrame: { buffer: ArrayBuffer; width: number; height: number } | null =
 
 // Multi-client support
 type Frame = { buffer: ArrayBuffer; width: number; height: number };
+
 const clientMap = new Map<
   number,
   { client: any; handler: (frame: any) => void; latest: Frame | null }
@@ -90,14 +91,14 @@ function detachClient(): void {
   if (!client) return;
   if (currentFrameHandler) {
     if (typeof client.off === "function") {
-      client.off("frame", currentFrameHandler);
+      client.off("data", currentFrameHandler);
     } else if (typeof client.removeListener === "function") {
-      client.removeListener("frame", currentFrameHandler);
+      client.removeListener("data", currentFrameHandler);
     } else if (typeof client.removeAllListeners === "function") {
-      client.removeAllListeners("frame");
+      client.removeAllListeners("data");
     }
   } else if (typeof client.removeAllListeners === "function") {
-    client.removeAllListeners("frame");
+    client.removeAllListeners("data");
   }
   currentFrameHandler = null;
   client = null;
@@ -112,11 +113,11 @@ function stopSyphon(): void {
     try {
       if (entry.client && entry.handler) {
         if (typeof entry.client.off === "function")
-          entry.client.off("frame", entry.handler);
+          entry.client.off("data", entry.handler);
         else if (typeof entry.client.removeListener === "function")
-          entry.client.removeListener("frame", entry.handler);
+          entry.client.removeListener("data", entry.handler);
         else if (typeof entry.client.removeAllListeners === "function")
-          entry.client.removeAllListeners("frame");
+          entry.client.removeAllListeners("data");
       }
     } catch {}
     clientMap.delete(id);
@@ -146,9 +147,9 @@ function attachClientForServer(server: any): void {
     latestFrame = { buffer: ab, width, height };
   };
   if (typeof client.on === "function") {
-    client.on("frame", currentFrameHandler);
+    client.on("data", currentFrameHandler);
   } else if (typeof client.addListener === "function") {
-    client.addListener("frame", currentFrameHandler);
+    client.addListener("data", currentFrameHandler);
   }
 }
 
@@ -181,9 +182,9 @@ function createClientForServerIndex(index: number): number | null {
     },
     latest: null as Frame | null,
   };
-  if (typeof c.on === "function") c.on("frame", entry.handler);
+  if (typeof c.on === "function") c.on("data", entry.handler);
   else if (typeof c.addListener === "function")
-    c.addListener("frame", entry.handler);
+    c.addListener("data", entry.handler);
   clientMap.set(id, entry);
   return id;
 }
@@ -193,11 +194,11 @@ function destroyClient(clientId: number): void {
   if (!entry) return;
   try {
     if (typeof entry.client.off === "function")
-      entry.client.off("frame", entry.handler);
+      entry.client.off("data", entry.handler);
     else if (typeof entry.client.removeListener === "function")
-      entry.client.removeListener("frame", entry.handler);
+      entry.client.removeListener("data", entry.handler);
     else if (typeof entry.client.removeAllListeners === "function")
-      entry.client.removeAllListeners("frame");
+      entry.client.removeAllListeners("data");
   } catch {}
   clientMap.delete(clientId);
 }
