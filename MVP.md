@@ -123,16 +123,55 @@ Acceptance
 
 ---
 
-## Slice 13 — Performance hardening
+## Slice 13 — Canvas Size
+- [ ] Add options for Canvas Size.
+- [ ] Ensure canvas for UI is 16:9 and letterboxes the preview if the output size is not 16:9.
+- [ ] Ensure mouse events & fabric manager still work correctly on output canvas.
+- [ ] Implement a zoom & pan controller for the preview canvas so the user can accurately position fabric elements on their output canvas even if the preview window is small.
+  - (The developer has code for this which works nicely with laptop trackpads and copies Figma/Miro's interactions).
+
+Acceptance
+- [ ] The output canvas size can be scaled.
+- [ ] The canvas in the UI is always 16:9, showing a letterboxed.
+- [ ] The user can still create fabric elements.
+- [ ] The user can zoom into the preview canvas and pan around.
+- [ ] Zooming into and panning around the canvas should scale and persist the transforms of the fabric elements correctly.
+  - +/- buttons exist  to control the zoom level at set increments.
+  - The zoom level is presented to the user.
+
+---
+
+## Slice 14 — Output Window
+- [ ] Refactor the codebase to use a child BrowserWindow as an offscreen renderer.
+  - Recommended setup to share the output canvas into the UI is detailed in the developer's repo here: https://github.com/vcync/electron-offscreen-child-window
+
+Acceptance
+- [ ] App works with two BrowserWindows, one handling the UI and the other handling the output window.
+
+---
+
+## Slice 15 — Performance hardening
 - [ ] Texture pooling; reuse FBOs; handle WebGL context loss.
-- [ ] Cap video decode FPS and upload bandwidth; OffscreenCanvas where available.
+- [ ] Cap video decode FPS and upload bandwidth.
 
 Acceptance
 - [ ] Stable performance at target resolution; no leaks after repeated source swaps.
 
 ---
 
-## Slice 14 — MIDI/Keyboard mapping (optional)
+## Slice 16 — Move to OffscreenCanvas
+The BrowserWindow setup can introduce frame jank on certain UI actions as one is a child of the other.
+- [ ] Move all canvas operations into a Web Worker.
+- [ ] Use the WebCodecs API to decode video in a worker environment.
+- [ ] Ensure atomic updates to the Web Worker via PostMessage.
+
+Acceptance
+- [ ] The application should handle all canvas operations in a Web Worker using OffscreenCanvas and WebCodecs API.
+- [ ] The application retains all working features.
+
+---
+
+## Slice 17 — MIDI/Keyboard mapping
 - [ ] Simple learn mode; map crossfader/slots to MIDI CC/notes; store mappings.
 
 Acceptance
@@ -140,7 +179,7 @@ Acceptance
 
 ---
 
-## Slice 15 — Testing / QA
+## Slice 18 — Testing / QA
 - [ ] Unit tests for store logic and source lifecycle; manual checklist across macOS.
 
 Acceptance
