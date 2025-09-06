@@ -116,10 +116,10 @@ Acceptance
 ---
 
 ## Slice 12 — Persistence
-- [ ] Save/load bank layout and per‑slot options to localStorage (or JSON file via Electron IPC if needed).
+- [x] Save/load bank layout and per‑slot options to localStorage (or JSON file via Electron IPC if needed).
 
 Acceptance
-- [ ] Restarting the app restores the previous session layout and settings.
+- [x] Restarting the app restores the previous session layout and settings.
 
 ---
 

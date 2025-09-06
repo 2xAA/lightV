@@ -5,14 +5,18 @@ import {
   ColorAverageControls,
   ColorAverageTable,
   useColorAverageStore,
+  ColorAnalysisSessionProvider,
 } from "@/features/color-analysis";
 import {
   useVjStore,
+  VjSessionProvider,
   SourceOptionsPanel,
   CompositorCanvas,
   Crossfader,
   Bank,
+  SessionControls,
 } from "@/features/vj";
+import { SessionManager } from "@/shared/session";
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let removeServersListener: (() => void) | null = null;
@@ -29,7 +33,7 @@ function onMixerReady(canvas: HTMLCanvasElement): void {
   colorStore.attachCompositorGetter(() => vj.compositor);
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Start Syphon discovery
   window.syphon.start();
 
@@ -44,6 +48,18 @@ onMounted(() => {
   if (selectedIndex.value == null && servers.value.length > 0) {
     selectedIndex.value = servers.value[servers.value.length - 1].index;
   }
+
+  // Register session providers
+  SessionManager.registerProvider("vj", new VjSessionProvider(vj));
+  SessionManager.registerProvider(
+    "colorAnalysis",
+    new ColorAnalysisSessionProvider(colorStore),
+  );
+
+  // Load complete session after both apps are initialized
+  setTimeout(async () => {
+    await SessionManager.loadSession();
+  }, 500);
 });
 
 watch(selectedIndex, (idx) => {
@@ -55,10 +71,17 @@ watch(selectedIndex, (idx) => {
 onBeforeUnmount(() => {
   if (removeServersListener) removeServersListener();
   window.syphon.stop();
+
+  // Unregister session providers
+  SessionManager.unregisterProvider("vj");
+  SessionManager.unregisterProvider("colorAnalysis");
 });
 </script>
 
 <template>
+  <div style="padding: 12px 12px 0 12px">
+    <SessionControls />
+  </div>
   <r-grid columns="12" gap="12" style="padding: 12px">
     <r-cell span="3" sm="12">
       <SourceOptionsPanel side="left" />

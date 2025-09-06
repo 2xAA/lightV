@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, shallowRef } from "vue";
+import { ref, shallowRef, watch } from "vue";
 import { Compositor } from "@/entities/compositor";
 import {
   ISource,
@@ -68,6 +68,7 @@ export const useVjStore = defineStore("vj", () => {
   const canvasEl = ref<HTMLCanvasElement | null>(null);
   let rafId: number | null = null;
   let lastTime: number | null = null;
+  let cleanupAutoSave: (() => void) | null = null;
 
   // global privacy: pause webcams that are not on A/B decks
   const pauseInactiveWebcams = ref(true);
@@ -124,33 +125,42 @@ export const useVjStore = defineStore("vj", () => {
     }
   }
 
-  function init(canvas: HTMLCanvasElement): void {
+  async function init(canvas: HTMLCanvasElement): Promise<void> {
     canvasEl.value = canvas;
     const comp = new Compositor(canvas);
     comp.init();
     compositor.value = comp;
 
-    // instantiate two mock sources as defaults on decks
+    // instantiate two mock sources as defaults on decks (only if no session was loaded)
     const gl = comp.getGL();
     if (!gl) return;
-    sourceA.value = createSource("mock", {
-      id: "A",
-      options: { color: [255, 80, 80] },
-    });
-    sourceB.value = createSource("mock", {
-      id: "B",
-      options: { color: [80, 160, 255] },
-    });
-    sourceA.value.load(gl);
-    sourceB.value.load(gl);
-    sourceA.value.start();
-    sourceB.value.start();
+
+    if (!sourceA.value) {
+      sourceA.value = createSource("mock", {
+        id: "A",
+        options: { color: [255, 80, 80] },
+      });
+      sourceA.value.load(gl);
+      sourceA.value.start();
+    }
+
+    if (!sourceB.value) {
+      sourceB.value = createSource("mock", {
+        id: "B",
+        options: { color: [80, 160, 255] },
+      });
+      sourceB.value.load(gl);
+      sourceB.value.start();
+    }
 
     // feed textures to compositor
     comp.setTextures(
       sourceA.value.getTexture(gl),
       sourceB.value.getTexture(gl),
     );
+
+    // Enable auto-save
+    cleanupAutoSave = enableAutoSave();
 
     start();
   }
@@ -294,11 +304,21 @@ export const useVjStore = defineStore("vj", () => {
     dataUrl: string,
     filename: string,
   ): Promise<File> {
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    return new File([blob], filename, {
-      type: blob.type || "application/octet-stream",
-    });
+    // Extract the base64 data and MIME type from the data URL
+    const [header, base64Data] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:([^;]+)/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+
+    // Convert base64 to binary
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Create blob and file
+    const blob = new Blob([bytes], { type: mimeType });
+    return new File([blob], filename, { type: mimeType });
   }
 
   async function loadImageIntoDeck(deck: DeckId, file: File): Promise<void> {
@@ -683,6 +703,10 @@ export const useVjStore = defineStore("vj", () => {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    if (cleanupAutoSave) {
+      cleanupAutoSave();
+      cleanupAutoSave = null;
+    }
   }
 
   function setCrossfade(v: number): void {
@@ -710,6 +734,248 @@ export const useVjStore = defineStore("vj", () => {
     transitionLumaInvert.value = !!on;
   }
 
+  // Persistence functions
+  function saveSession(): void {
+    try {
+      const sessionData = {
+        crossfade: crossfade.value,
+        crossfadeCurve: crossfadeCurve.value,
+        blendMode: blendMode.value,
+        transitionType: transitionType.value,
+        transitionSoftness: transitionSoftness.value,
+        transitionAngleRad: transitionAngleRad.value,
+        transitionLumaInvert: transitionLumaInvert.value,
+        pauseInactiveWebcams: pauseInactiveWebcams.value,
+        leftSlots: leftSlots.value.map((slot) => ({
+          id: slot.id,
+          label: slot.label,
+          type: slot.type,
+          saved: slot.saved,
+        })),
+        rightSlots: rightSlots.value.map((slot) => ({
+          id: slot.id,
+          label: slot.label,
+          type: slot.type,
+          saved: slot.saved,
+        })),
+        selectedLeftIndex: selectedLeftIndex.value,
+        selectedRightIndex: selectedRightIndex.value,
+        // Save active deck sources by finding their saved descriptors or creating them
+        activeDeckA: sourceA.value ? getSourceDescriptor(sourceA.value) : null,
+        activeDeckB: sourceB.value ? getSourceDescriptor(sourceB.value) : null,
+      };
+      localStorage.setItem("lightV-session", JSON.stringify(sessionData));
+    } catch (error) {
+      console.warn("Failed to save session:", error);
+    }
+  }
+
+  // Helper function to find which slot contains a given source
+  function findSlotWithSource(
+    source: ISource,
+  ): { saved: SourceDescriptor } | null {
+    const allSlots = [...leftSlots.value, ...rightSlots.value];
+    const slot = allSlots.find((s) => s.source === source);
+    return slot && slot.saved ? { saved: slot.saved } : null;
+  }
+
+  // Helper function to get source descriptor from slot or create one for deck sources
+  function getSourceDescriptor(
+    source: ISource,
+  ): { saved: SourceDescriptor } | null {
+    // First try to find it in a slot
+    const slotDescriptor = findSlotWithSource(source);
+    if (slotDescriptor) return slotDescriptor;
+
+    // If not in a slot, create a descriptor based on the source type
+    const sourceType = (source as any).type;
+    if (sourceType === "image" && (source as any).getDataUrl) {
+      return {
+        saved: {
+          type: "image",
+          label: (source as any).label || "Image",
+          dataUrl: (source as any).getDataUrl(),
+        },
+      };
+    } else if (sourceType === "syphon") {
+      return {
+        saved: {
+          type: "syphon",
+          label: (source as any).label || "Syphon",
+          serverIndex: (source as any).serverIndex,
+        },
+      };
+    } else if (sourceType === "video" && (source as any).getDataUrl) {
+      return {
+        saved: {
+          type: "video",
+          label: (source as any).label || "Video",
+          dataUrl: (source as any).getDataUrl(),
+          options: {
+            loop: (source as any).options?.loop ?? true,
+            muted: (source as any).options?.muted ?? true,
+            playbackRate: (source as any).options?.playbackRate ?? 1,
+          },
+        },
+      };
+    } else if (sourceType === "webcam") {
+      return {
+        saved: {
+          type: "webcam",
+          label: (source as any).label || "Webcam",
+          deviceId: (source as any).options?.deviceId,
+        } as SourceDescriptor,
+      };
+    } else if (sourceType === "shader") {
+      return {
+        saved: {
+          type: "shader",
+          label: (source as any).label || "Shader",
+          frag: (source as any).options?.frag || "",
+        } as SourceDescriptor,
+      };
+    }
+
+    return null;
+  }
+
+  async function loadSession(): Promise<void> {
+    try {
+      const sessionDataStr = localStorage.getItem("lightV-session");
+      if (!sessionDataStr) return;
+
+      const sessionData = JSON.parse(sessionDataStr);
+
+      // Restore basic state
+      crossfade.value = sessionData.crossfade ?? 0;
+      crossfadeCurve.value = sessionData.crossfadeCurve ?? "linear";
+      blendMode.value = sessionData.blendMode ?? "normal";
+      transitionType.value = sessionData.transitionType ?? "crossfade";
+      transitionSoftness.value = sessionData.transitionSoftness ?? 0.05;
+      transitionAngleRad.value = sessionData.transitionAngleRad ?? 0;
+      transitionLumaInvert.value = sessionData.transitionLumaInvert ?? false;
+      pauseInactiveWebcams.value = sessionData.pauseInactiveWebcams ?? true;
+      selectedLeftIndex.value = sessionData.selectedLeftIndex ?? null;
+      selectedRightIndex.value = sessionData.selectedRightIndex ?? null;
+
+      // Restore slots (without instantiating sources yet)
+      if (sessionData.leftSlots) {
+        leftSlots.value = sessionData.leftSlots.map((slot: any) => ({
+          id: slot.id,
+          label: slot.label,
+          source: null, // Will be instantiated when needed
+          type: slot.type,
+          saved: slot.saved,
+        }));
+      }
+
+      if (sessionData.rightSlots) {
+        rightSlots.value = sessionData.rightSlots.map((slot: any) => ({
+          id: slot.id,
+          label: slot.label,
+          source: null, // Will be instantiated when needed
+          type: slot.type,
+          saved: slot.saved,
+        }));
+      }
+
+      // Restore active deck sources if they were saved
+      if (sessionData.activeDeckA && sessionData.activeDeckA.saved) {
+        const comp = compositor.value;
+        const gl = comp?.getGL();
+        if (gl) {
+          const source = await instantiateFromDescriptor(
+            sessionData.activeDeckA.saved,
+          );
+          if (source) {
+            sourceA.value = source;
+            source.load(gl);
+            if (canvasEl.value && (source as any).setOutputSize) {
+              (source as any).setOutputSize(
+                canvasEl.value.width,
+                canvasEl.value.height,
+              );
+            }
+            source.start();
+          }
+        }
+      }
+
+      if (sessionData.activeDeckB && sessionData.activeDeckB.saved) {
+        const comp = compositor.value;
+        const gl = comp?.getGL();
+        if (gl) {
+          const source = await instantiateFromDescriptor(
+            sessionData.activeDeckB.saved,
+          );
+          if (source) {
+            sourceB.value = source;
+            source.load(gl);
+            if (canvasEl.value && (source as any).setOutputSize) {
+              (source as any).setOutputSize(
+                canvasEl.value.width,
+                canvasEl.value.height,
+              );
+            }
+            source.start();
+          }
+        }
+      }
+
+      // Update compositor with both restored sources
+      const comp = compositor.value;
+      const gl = comp?.getGL();
+      if (comp && gl) {
+        comp.setTextures(
+          sourceA.value?.getTexture(gl) ?? null,
+          sourceB.value?.getTexture(gl) ?? null,
+        );
+      }
+    } catch (error) {
+      console.warn("Failed to load session:", error);
+    }
+  }
+
+  // Auto-save on state changes
+  function enableAutoSave(): () => void {
+    // Save when crossfade changes
+    const stopCrossfadeWatcher = watch(crossfade, saveSession);
+    const stopCrossfadeCurveWatcher = watch(crossfadeCurve, saveSession);
+    const stopBlendModeWatcher = watch(blendMode, saveSession);
+    const stopTransitionTypeWatcher = watch(transitionType, saveSession);
+    const stopTransitionSoftnessWatcher = watch(
+      transitionSoftness,
+      saveSession,
+    );
+    const stopTransitionAngleWatcher = watch(transitionAngleRad, saveSession);
+    const stopTransitionLumaWatcher = watch(transitionLumaInvert, saveSession);
+    const stopPauseWebcamsWatcher = watch(pauseInactiveWebcams, saveSession);
+
+    // Save when slots change
+    const stopLeftSlotsWatcher = watch(leftSlots, saveSession, { deep: true });
+    const stopRightSlotsWatcher = watch(rightSlots, saveSession, {
+      deep: true,
+    });
+    const stopSelectedLeftWatcher = watch(selectedLeftIndex, saveSession);
+    const stopSelectedRightWatcher = watch(selectedRightIndex, saveSession);
+
+    // Return cleanup function
+    return () => {
+      stopCrossfadeWatcher();
+      stopCrossfadeCurveWatcher();
+      stopBlendModeWatcher();
+      stopTransitionTypeWatcher();
+      stopTransitionSoftnessWatcher();
+      stopTransitionAngleWatcher();
+      stopTransitionLumaWatcher();
+      stopPauseWebcamsWatcher();
+      stopLeftSlotsWatcher();
+      stopRightSlotsWatcher();
+      stopSelectedLeftWatcher();
+      stopSelectedRightWatcher();
+    };
+  }
+
   return {
     crossfade,
     crossfadeCurve,
@@ -719,6 +985,11 @@ export const useVjStore = defineStore("vj", () => {
     transitionAngleRad,
     transitionLumaInvert,
     compositor,
+    canvasEl,
+    sourceA,
+    sourceB,
+    selectedLeftIndex,
+    selectedRightIndex,
     init,
     start,
     stop,
@@ -754,5 +1025,7 @@ export const useVjStore = defineStore("vj", () => {
     setSelectedSlot,
     getSelectedSlot,
     getSelectedSource,
+    getSourceDescriptor,
+    enableAutoSave,
   };
 });
