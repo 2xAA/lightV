@@ -37,6 +37,23 @@ const dropdownMenuButtonRef = useTemplateRef<HTMLDivElement>(
 );
 const dropdownMenuRef = useTemplateRef<HTMLDivElement>("dropdownMenuRef");
 
+function handleClickOutside(event: MouseEvent): void {
+  if (
+    dropdownMenuButtonRef.value &&
+    dropdownMenuButtonRef.value.contains(event.target as Node)
+  ) {
+    return;
+  }
+  if (
+    dropdownMenuRef.value &&
+    dropdownMenuRef.value.contains(event.target as Node)
+  ) {
+    return;
+  }
+  isOpen.value = false;
+  document.removeEventListener("click", handleClickOutside);
+}
+
 function onToggleDropdown(): void {
   // get position of the ref element
   const refEl = dropdownMenuButtonRef.value;
@@ -52,6 +69,8 @@ function onToggleDropdown(): void {
   dropdownMenuRef.value.style.left = `${offsetX}px`;
 
   isOpen.value = !isOpen.value;
+
+  document.addEventListener("click", handleClickOutside);
 }
 
 function onItemClick(item: { id: string; name: string }): void {
@@ -71,7 +90,8 @@ function onItemClick(item: { id: string; name: string }): void {
 }
 
 .dropdown-menu-items-list {
-  background: rgba(var(--foreground-color-rgb), 0.08);
+  overflow: hidden;
+  background: var(--background-color);
   border: 1px solid rgba(var(--foreground-color-rgb), 0.18);
   border-radius: 6px;
 
@@ -83,9 +103,11 @@ function onItemClick(item: { id: string; name: string }): void {
 .dropdown-menu-items-list li {
   padding: 6px 10px;
   cursor: pointer;
+  margin: 0;
 }
 
 .dropdown-menu-items-list li:hover {
-  background: rgba(var(--foreground-color-rgb), 0.12);
+  background: rgba(var(--foreground-color-rgb), 0.5);
+  color: var(--background-color);
 }
 </style>
